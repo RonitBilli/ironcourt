@@ -1,5 +1,5 @@
 // Offline shell: network first so updates land immediately, cache as fallback for the gym basement.
-const CACHE = "ironcourt-v3";
+const CACHE = "ironcourt-v5";
 const SHELL = ["./", "index.html", "styles.css", "app.js", "data.js", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png"];
 
 self.addEventListener("install", (e) => {

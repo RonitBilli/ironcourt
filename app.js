@@ -24,6 +24,18 @@ function migrate(s) {
   // New library exercises arrive with app updates; user edits to existing ones are kept.
   for (const [id, ex] of Object.entries(EXERCISES)) if (!s.plan.exercises[id]) s.plan.exercises[id] = clone(ex);
   for (const [id, se] of Object.entries(SESSIONS)) if (!s.plan.sessions[id]) s.plan.sessions[id] = clone(se);
+  // v2: demo clips, no-repeat week, second coffee. Installed copies were one day old, so
+  // default sessions are replaced outright; custom sessions and all logs are kept.
+  if ((s.plan.version || 1) < 2) {
+    for (const [id, se] of Object.entries(SESSIONS)) s.plan.sessions[id] = clone(se);
+    for (const [id, ex] of Object.entries(EXERCISES)) if (s.plan.exercises[id] && !s.plan.exercises[id].demo) s.plan.exercises[id].demo = ex.demo;
+    const sc = s.plan.schedule;
+    const c1 = sc.find((x) => x.title === "Black coffee");
+    if (c1) c1.title = "Black coffee #1";
+    if (!sc.some((x) => /coffee #2/i.test(x.title))) sc.push({ time: "17:30", title: "Black coffee #2", kind: "habit" });
+    if (!s.plan.foods.some((f) => f[0] === "Chai, no sugar")) s.plan.foods.push(["Chai, no sugar", 45, 3]);
+    s.plan.version = 2;
+  }
   s.plan.schedule.forEach((it) => { if (!it.id) it.id = uid(); });
   return s;
 }
@@ -109,9 +121,20 @@ function ytId(input) {
   if (m) return m[1];
   return /^[\w-]{11}$/.test(s) ? s : "";
 }
-function videoHTML(id) {
+// Demo = a 10-20 s clip of just the movement, muted and looping like a GIF.
+// Tutorial = the longer coached video, with sound and controls.
+function videoHTML(id, demo = false) {
   if (!id) return `<p class="muted small">No video set. Add one in Plan → Exercises.</p>`;
-  return `<div class="video"><iframe src="https://www.youtube.com/embed/${esc(id)}?playsinline=1&rel=0&modestbranding=1" title="Exercise video" referrerpolicy="strict-origin-when-cross-origin" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe></div>`;
+  const q = demo
+    ? `autoplay=1&mute=1&loop=1&playlist=${esc(id)}&controls=0&disablekb=1&iv_load_policy=3&playsinline=1&rel=0&modestbranding=1`
+    : `playsinline=1&rel=0&modestbranding=1&iv_load_policy=3`;
+  return `<div class="video ${demo ? "demo" : ""}"><iframe src="https://www.youtube.com/embed/${esc(id)}?${q}" title="Exercise video" referrerpolicy="strict-origin-when-cross-origin" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe></div>`;
+}
+function exVideo(info, key) {
+  const full = ui.open[key]?.full;
+  const id = full || !info.demo ? info.video : info.demo;
+  const toggle = info.demo && info.video ? `<button class="linkish small" data-a="vid-mode" data-k="${key}">${full ? "Show the short demo" : "Watch the full tutorial (with coaching)"}</button>` : "";
+  return `${videoHTML(id, !full && !!info.demo)}${toggle}`;
 }
 
 // ================= ui state =================
@@ -129,29 +152,44 @@ function advanceRotation() { S.rot[P().mode] = ((S.rot[P().mode] || 0) + 1) % Ma
 const activeWorkout = () => S.workouts.find((w) => w.id === S.active) || null;
 const workoutsOn = (k) => S.workouts.filter((w) => w.date === k && w.done);
 
-function lastLog(ex, excludeId) {
-  for (let i = S.workouts.length - 1; i >= 0; i--) {
+function logsFor(ex, excludeId, n = 2) {
+  const out = [];
+  for (let i = S.workouts.length - 1; i >= 0 && out.length < n; i--) {
     const w = S.workouts[i];
     if (w.id === excludeId || !w.done) continue;
     const it = w.items.find((x) => x.ex === ex && x.sets.some((s) => s.done));
-    if (it) return { date: w.date, sets: it.sets.filter((s) => s.done) };
+    if (it) out.push({ date: w.date, sets: it.sets.filter((s) => s.done), effort: it.effort || null });
   }
-  return null;
+  return out;
 }
+const lastLog = (ex, excludeId) => logsFor(ex, excludeId, 1)[0] || null;
 function topRep(reps) { const n = String(reps).match(/\d+/g); return n ? Math.max(...n.map(Number)) : null; }
+function lowRep(reps) { const n = String(reps).match(/\d+/g); return n ? Math.min(...n.map(Number)) : null; }
+const roundTo = (v, step) => Math.round(v / step) * step;
+
+// Progression: reps logged + how it felt last time decide this session's target.
+// kind: good (go up), warn (back off / swap), "" (hold and beat it)
+const EFFORT = { easy: "Easy", right: "Just right", hard: "Very hard", pain: "Hurt" };
+const FELT = { easy: "felt easy", right: "felt just right", hard: "felt very hard", pain: "hurt" };
 function suggestion(item, wid) {
-  const last = lastLog(item.ex, wid);
-  if (!last) return { text: "First time logging this. Pick a weight you could lift for the top of the range with 2-3 reps to spare.", good: false };
+  const [last, prev] = logsFor(item.ex, wid, 2);
+  if (!last) return { text: "First time logging this. Pick a weight you could lift for the top of the range with 2-3 reps to spare.", kind: "" };
   const str = last.sets.map((s) => (s.w ? `${s.w}×${s.r || "?"}` : `${s.r || "?"} reps`)).join(", ");
-  const top = topRep(item.reps);
+  const head = `Last (${fmtDay(last.date)}${last.effort ? ", " + FELT[last.effort] : ""}): ${str}.`;
+  const top = topRep(item.reps), low = lowRep(item.reps);
   const hit = top && last.sets.every((s) => +s.r >= top);
+  const missed = low && last.sets.some((s) => +s.r < low);
   const w = +last.sets[last.sets.length - 1].w || 0;
-  if (hit && w) {
-    const inc = /squat|leg_press|rdl|hip_thrust|hack/.test(item.ex) ? 5 : 2.5;
-    return { text: `Last (${fmtDay(last.date)}): ${str}. You hit the top of the range. Try ${w + inc} kg.`, good: true };
-  }
-  if (hit) return { text: `Last (${fmtDay(last.date)}): ${str}. Make it harder: slower reps, a pause, or add load.`, good: true };
-  return { text: `Last (${fmtDay(last.date)}): ${str}. Beat it: same weight, one more rep on any set.`, good: false };
+  const inc = /squat|leg_press|rdl|hip_thrust|hack|deadlift/.test(item.ex) ? 5 : 2.5;
+  if (last.effort === "pain") return { text: `${head} It hurt last time. Tap ⇄ Swap for a different exercise, or go 20% lighter (${w ? roundTo(w * 0.8, 2.5) + " kg" : "easier version"}) and stop if it hurts again.`, kind: "warn" };
+  if (prev && w && missed && +prev.sets[prev.sets.length - 1].w === w && prev.sets.some((s) => +s.r < low))
+    return { text: `${head} Stuck below ${low} reps two sessions in a row. Drop to ${roundTo(w * 0.9, 2.5)} kg and build back up.`, kind: "warn" };
+  if (hit && w && last.effort === "easy") return { text: `${head} Top of the range and it felt easy. Jump to ${w + inc * 2} kg.`, kind: "good" };
+  if (hit && w) return { text: `${head} You hit the top of the range. Try ${w + inc} kg.`, kind: "good" };
+  if (hit) return { text: `${head} Make it harder: slower lowering, a pause at the stretch, or add load.`, kind: "good" };
+  if (last.effort === "easy" && w) return { text: `${head} Felt easy but you stopped short of ${top}. Same weight, push every set to ${top} reps.`, kind: "good" };
+  if (last.effort === "hard" && missed) return { text: `${head} Very hard and under ${low} reps. Keep ${w || "the same"} ${w ? "kg" : "load"} and aim for ${low} on every set.`, kind: "" };
+  return { text: `${head} Beat it: same weight, one more rep on any set.`, kind: "" };
 }
 
 function startWorkout(sid) {
@@ -240,13 +278,20 @@ setInterval(() => { if (rest) tickRest(); }, 250);
 function renderTop() {
   const k = todayKey(), p = P();
   const total = diffDays(p.cutEnd, p.cutStart) + 1, n = diffDays(k, p.cutStart) + 1;
-  let chip;
-  if (p.mode === "term") chip = `<span class="chip">Term mode</span>`;
-  else if (n < 1) chip = `<span class="chip">Cut starts in ${1 - n}d</span>`;
-  else if (n > total) chip = `<span class="chip good">Cut done</span>`;
-  else chip = `<span class="chip">Day ${n} of ${total}</span>`;
+  let phase;
+  if (p.mode === "term") phase = "Term mode";
+  else if (n < 1) phase = `Cut starts in ${1 - n} day${n === 0 ? "" : "s"}`;
+  else if (n > total) phase = "Cut complete";
+  else phase = `Cut · day ${n} of ${total}`;
   const titles = { today: fmtDay(k), train: "Train", food: "Food", progress: "Progress", plan: "Plan" };
-  $("#top").innerHTML = `<div class="top-inner"><h1>${esc(titles[ui.tab])}</h1>${isParty(k) ? `<span class="chip warn">Party day</span>` : ""}${chip}</div>`;
+  $("#top").innerHTML = `<div class="top-inner"><div class="grow"><div class="kicker">${esc(ui.tab === "today" ? phase : fmtDay(k))}</div><h1>${esc(titles[ui.tab])}</h1></div>${isParty(k) ? `<span class="chip warn">Party day</span>` : ""}</div>`;
+}
+
+function ring(pct, size = 120, sw = 11) {
+  const r = (size - sw) / 2, c = 2 * Math.PI * r, off = c * (1 - Math.max(0, Math.min(pct, 100)) / 100);
+  return `<svg class="ring ${pct >= 100 ? "full" : ""}" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" aria-hidden="true">
+    <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke-width="${sw}" class="ring-bg"/>
+    <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke-width="${sw}" class="ring-fg" stroke-linecap="round" stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}" transform="rotate(-90 ${size / 2} ${size / 2})"/></svg>`;
 }
 
 // ================= TODAY =================
@@ -263,9 +308,8 @@ function renderToday() {
   const score = Math.round(((nChecked + goals.filter(Boolean).length) / (sched.length + goals.length)) * 100);
 
   const meter = (label, val, unit, target, pct, extra = "") => `
-    <div class="meter"><span class="eyebrow">${label}</span>
+    <div class="meter"><div class="meter-top"><span class="eyebrow">${label}</span>${ring(pct, 34, 5)}</div>
       <div class="val">${val}<small> ${unit}</small></div>
-      <div class="bar ${pct >= 100 ? "good" : ""}"><i style="width:${Math.min(pct, 100)}%"></i></div>
       <span class="small muted">${target}</span>${extra}</div>`;
 
   const sid = currentSessionId(), se = p.sessions[sid];
@@ -293,11 +337,16 @@ function renderToday() {
   const isSunday = parseKey(k).getDay() === 0;
 
   return `
-    <section class="card"><div class="score"><div class="big">${score}%</div>
-      <div class="grow stack"><div class="bar ${score >= 100 ? "good" : ""}"><i style="width:${score}%"></i></div>
-      <span class="small muted">${nChecked} of ${sched.length} done · protein ${goals[0] ? "hit" : "not yet"} · water ${goals[1] ? "hit" : "not yet"}</span></div></div></section>
+    <section class="hero">
+      <div class="hero-ring">${ring(score, 116, 10)}<div class="ring-txt"><b>${score}</b><span>%</span></div></div>
+      <div class="hero-side">
+        <span class="eyebrow">Today's score</span>
+        <p class="hero-line"><b>${nChecked}</b> of ${sched.length} done</p>
+        <div class="pills"><span class="pill ${goals[0] ? "on" : ""}">Protein</span><span class="pill ${goals[1] ? "on" : ""}">Water</span><span class="pill ${doneW ? "on" : ""}">Gym</span></div>
+      </div>
+    </section>
 
-    <section class="card">${next}</section>
+    <section class="card next">${next}</section>
     ${partyCard}
 
     <div class="meters">
@@ -315,7 +364,7 @@ function renderToday() {
         if (it.kind === "meal") { const slot = p.meals.find((m) => m.id === it.ref); if (slot) { const o = mealOpt(slot, d); sub = `${slot.veg ? '<i class="veg"></i>' : ""}${esc(o.name)} · ${o.protein} g protein`; } }
         if (it.kind === "gym") sub = aw ? "In progress" : doneW ? "Logged" : sid === "REST" ? "Rest day in rotation" : esc(se?.name || "");
         return `<div class="tl ${i === nowIdx ? "now" : ""} ${on ? "done" : ""}">
-          <span class="t">${fmtTime(it.time)}</span>
+          <span class="t">${fmtTime(it.time)}</span><span class="dot k-${it.kind}"></span>
           <div class="what"><b>${esc(it.title)}</b>${sub ? `<span>${sub}</span>` : ""}</div>
           <button class="check ${on ? "on" : ""}" data-a="tcheck" data-id="${it.id}" aria-label="Mark ${esc(it.title)} done"></button></div>`;
       }).join("")}
@@ -344,13 +393,13 @@ function exCard(item, idx, w) {
   return `<article class="ex ${allDone ? "complete" : ""}" id="ex-${idx}">
     <div class="ex-title"><span class="n">${idx + 1}</span><div class="grow"><h3>${esc(info.name)}</h3>
       <div class="ex-meta"><span class="chip">${item.sets.length} × ${esc(item.reps)}</span><span class="chip">rest ${item.rest >= 60 ? `${Math.floor(item.rest / 60)}:${pad(item.rest % 60)}` : `${item.rest}s`}</span><span class="chip">${esc(info.muscle)}</span>${swapped ? `<span class="chip accent">swapped</span>` : ""}</div></div></div>
-    <div class="hint ${sug.good ? "good" : ""}">${esc(sug.text)}</div>
+    <div class="hint ${sug.kind}">${esc(sug.text)}</div>
     <div class="ex-actions">
-      <button class="btn small ${open.video ? "primary" : ""}" data-a="toggle" data-k="${w.id}.${idx}" data-f="video">▶ Video</button>
+      <button class="btn small ${open.video ? "primary" : ""}" data-a="toggle" data-k="${w.id}.${idx}" data-f="video">▶ Demo</button>
       <button class="btn small" data-a="swap" data-i="${idx}">⇄ Swap</button>
       <button class="btn small ${open.cues ? "primary" : ""}" data-a="toggle" data-k="${w.id}.${idx}" data-f="cues">How to</button>
     </div>
-    ${open.video ? videoHTML(info.video) : ""}
+    ${open.video ? exVideo(info, `${w.id}.${idx}`) : ""}
     ${open.cues ? `<ul class="cues">${(info.cues || []).map((c) => `<li>${esc(c)}</li>`).join("")}</ul>` : ""}
     <div class="labels"><span>Set</span><span>kg</span><span></span><span>reps</span><span></span></div>
     <div class="sets">${item.sets.map((s, j) => `
@@ -362,8 +411,9 @@ function exCard(item, idx, w) {
         <button class="check ${s.done ? "on" : ""}" data-a="set-done" data-i="${idx}" data-j="${j}" aria-label="Set ${j + 1} done"></button>
       </div>`).join("")}
     </div>
+    ${item.sets.some((s) => s.done) ? `<div class="effort"><span class="eyebrow">How did it feel?</span><div class="opts">${Object.entries(EFFORT).map(([k, l]) => `<button class="opt e-${k} ${item.effort === k ? "on" : ""}" data-a="effort" data-i="${idx}" data-v="${k}">${l}</button>`).join("")}</div><span class="small muted">Sets next session's target weight.</span></div>` : ""}
     <div class="row"><button class="btn small ghost" data-a="set-add" data-i="${idx}">+ Set</button><button class="btn small ghost" data-a="set-del" data-i="${idx}">− Set</button>
-      <input class="grow" type="text" id="note-${idx}" placeholder="Note (seat 4, felt easy…)" value="${esc(item.note)}" data-bind="@w.items.${idx}.note" data-type="str"></div>
+      <input class="grow" type="text" id="note-${idx}" placeholder="Note to self: seat height, grip…" value="${esc(item.note)}" data-bind="@w.items.${idx}.note" data-type="str"></div>
   </article>`;
 }
 
@@ -427,12 +477,22 @@ function openSwap(idx) {
     ${list.map(([id, why]) => altCard(id, why, idx)).join("")}
     ${same.length ? `<details class="sec"><summary><b>More ${esc(group.toLowerCase())} exercises</b></summary><div class="body">${same.map(([id]) => altCard(id, exInfo(id).muscle, idx)).join("")}</div></details>` : ""}`);
 }
+// Which other session in this week's rotation already uses an exercise (after permanent swaps).
+function usedElsewhere(id, exceptSession) {
+  for (const sid of new Set(rotation())) {
+    if (sid === exceptSession) continue;
+    const se = P().sessions[sid];
+    if (se && se.items.some((it) => (S.swaps[it.ex] || it.ex) === id)) return se.name;
+  }
+  return null;
+}
 function altCard(id, why, idx) {
   const e = exInfo(id);
   const open = ui.open[`alt.${id}`];
-  return `<div class="alt"><div class="spread"><div class="grow"><b>${esc(e.name)}</b><p class="small muted">${esc(why)}</p></div>
-    <button class="btn small ${open ? "primary" : ""}" data-a="alt-video" data-id="${id}" data-i="${idx}">▶</button></div>
-    ${open ? videoHTML(e.video) : ""}
+  const used = usedElsewhere(id, activeWorkout()?.session);
+  return `<div class="alt"><div class="spread"><div class="grow"><b>${esc(e.name)}</b><p class="small muted">${esc(why)}</p>${used ? `<span class="chip warn">Already in ${esc(used)} this week</span>` : ""}</div>
+    <button class="btn small ${open ? "primary" : ""}" data-a="alt-video" data-id="${id}" data-i="${idx}" aria-label="Show demo">▶</button></div>
+    ${open ? videoHTML(e.demo || e.video, !!e.demo) : ""}
     <div class="row"><button class="btn small grow" data-a="swap-to" data-id="${id}" data-i="${idx}" data-always="0">Today</button><button class="btn small grow primary" data-a="swap-to" data-id="${id}" data-i="${idx}" data-always="1">Always</button></div></div>`;
 }
 
@@ -660,8 +720,9 @@ function renderPlan() {
       <div class="spread"><b>Editing</b><button class="btn small" data-a="ex-close">Done</button></div>
       <div class="field"><label>Name</label>${inp(`plan.exercises.${ui.editEx}.name`, ee.name)}</div>
       <div class="field"><label>Muscle</label>${inp(`plan.exercises.${ui.editEx}.muscle`, ee.muscle)}</div>
-      <div class="field"><label>YouTube link or video id</label><input type="text" id="f-video" value="${esc(ee.video)}" data-a-change="ex-video" placeholder="https://youtu.be/…"></div>
-      ${videoHTML(ee.video)}
+      <div class="field"><label>Short demo clip (YouTube link or id, loops silently)</label><input type="text" id="f-demo" value="${esc(ee.demo || "")}" data-a-change="ex-video" data-f="demo" placeholder="https://youtube.com/shorts/…"></div>
+      ${ee.demo ? videoHTML(ee.demo, true) : ""}
+      <div class="field"><label>Full tutorial (YouTube link or id)</label><input type="text" id="f-video" value="${esc(ee.video)}" data-a-change="ex-video" data-f="video" placeholder="https://youtu.be/…"></div>
       <div class="field"><label>Form cues, one per line</label>${lines(`plan.exercises.${ui.editEx}.cues`, ee.cues)}</div>
       <div class="field"><label>Alternatives</label>${(ee.alts || []).map(([id, why], i) => `<div class="row"><span class="grow small">${esc(exInfo(id).name)} <span class="muted">· ${esc(why)}</span></span><button class="icon-btn" data-a="alt-del" data-i="${i}" aria-label="Remove">✕</button></div>`).join("")}
         <div class="row"><select id="altPick" class="grow" aria-label="Alternative exercise">${exOptions()}</select></div>
@@ -731,7 +792,7 @@ document.addEventListener("change", (e) => {
   const el = e.target;
   if (el.id === "importFile") return importBackup(el.files[0]);
   if (el.dataset.aChange === "sess-pick") { ui.editSession = el.value; ui.confirm = null; return render(); }
-  if (el.dataset.aChange === "ex-video") { const id = ytId(el.value); if (!id && el.value.trim()) { toast("That doesn't look like a YouTube link"); return; } P().exercises[ui.editEx].video = id; save(); return render(); }
+  if (el.dataset.aChange === "ex-video") { const id = ytId(el.value); if (!id && el.value.trim()) { toast("That doesn't look like a YouTube link"); return; } P().exercises[ui.editEx][el.dataset.f || "video"] = id; save(); return render(); }
   const path = el.dataset.bind;
   if (!path) return;
   if (path.startsWith("days.")) day(path.split(".")[1]);
@@ -792,6 +853,8 @@ const actions = {
     save(); closeSheet(); toast(`Swapped to ${exInfo(id).name}${b.dataset.always === "1" ? " (always)" : " (today)"}`); render();
   },
   "sheet-close": () => closeSheet(),
+  "vid-mode": (b) => { const o = (ui.open[b.dataset.k] ??= {}); o.full = !o.full; render(); },
+  effort: (b) => { const it = activeWorkout().items[+b.dataset.i]; it.effort = it.effort === b.dataset.v ? null : b.dataset.v; save(); render(); },
   "rest-add": () => { if (rest) { rest.end += 15000; rest.fired = false; $("#restbar").classList.remove("over"); tickRest(); } },
   "rest-stop": () => stopRest(),
   water: (b) => { const d = day(); d.water = Math.max(0, (d.water || 0) + +b.dataset.v); save(); render(); },
