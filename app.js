@@ -393,7 +393,7 @@ function renderToday() {
         return `<div class="tl ${i === nowIdx ? "now" : ""} ${on ? "done" : ""} ${it.cls ? "cls" : ""}">
           <span class="t">${fmtTime(it.time)}</span><span class="dot k-${it.kind}"></span>
           <div class="what" ${it.go ? `data-a="tl-go" data-id="${it.id}" role="button" tabindex="0"` : ""}><b>${esc(it.title)}${it.go ? " ›" : ""}</b>${sub ? `<span>${sub}</span>` : ""}</div>
-          ${it.cls ? `<span class="chip">Class</span>` : `<button class="check ${on ? "on" : ""}" data-a="${it.dyn ? "dcheck" : "tcheck"}" data-id="${it.id}" aria-label="Mark ${esc(it.title)} done"></button>`}</div>`;
+          ${it.cls ? `<span class="chip">Outlook</span>` : `<button class="check ${on ? "on" : ""}" data-a="${it.dyn ? "dcheck" : "tcheck"}" data-id="${it.id}" aria-label="Mark ${esc(it.title)} done"></button>`}</div>`;
       }).join("")}
     </div></section>
 
@@ -462,6 +462,13 @@ function freeSlot(classes, len, prefer) {
   const start = Math.max(10 * 60 + 30, Math.min(mins(prefer), 10 * 60 + 30));
   for (let t = start; t <= latest; t += 15) if (!busy.some(([a, b]) => t < b && t + len > a)) return `${pad(Math.floor(t / 60))}:${pad(t % 60)}`;
   return null;
+}
+
+// Next 7 days of Outlook events, grouped by day (Plan → Classes).
+function upcomingHTML() {
+  const days = Array.from({ length: 7 }, (_, i) => addDays(todayKey(), i)).map((k) => [k, Cal.eventsOn(k)]).filter(([, ev]) => ev.length);
+  if (!days.length) return Cal.status().url ? `<p class="small muted">No Outlook events in the next 7 days.</p>` : "";
+  return `<span class="eyebrow">Next 7 days</span><div class="stack">${days.map(([k, ev]) => `<div><b class="small">${esc(fmtDay(k))}</b>${ev.map((e) => `<div class="spread small"><span>${esc(e.t)}${e.w ? ` <span class="muted">· ${esc(e.w)}</span>` : ""}</span><span class="muted num">${fmtTime(hhmm(e.s))}-${fmtTime(hhmm(e.e))}</span></div>`).join("")}</div>`).join("")}</div>`;
 }
 
 // ---------- phone sync: reminders + alarms ----------
@@ -1189,7 +1196,8 @@ function renderPlan() {
     </ol>
     <div class="field"><label for="icsUrl">Calendar ICS link</label><input id="icsUrl" type="url" value="${esc(cs.url)}" data-a-change="ics" placeholder="https://outlook.office365.com/owa/calendar/…/calendar.ics" autocomplete="off"></div>
     <p class="small ${cs.err ? "" : "muted"}">${cs.err ? `<b>Couldn't load:</b> ${esc(cs.err)}` : cs.at ? `${cs.n} events loaded ${new Date(cs.at).toLocaleString("en-IN")}` : "Not loaded yet."}</p>
-    <button class="btn" data-a="ics-refresh">Refresh classes</button>`;
+    <button class="btn" data-a="ics-refresh">Refresh classes</button>
+    ${upcomingHTML()}`;
   const gh = ghConf(), meta = ghMeta();
   const backup = `<span class="eyebrow">GitHub backup (automatic)</span>
     <p class="small muted">Saves one small file per day to a <b>private</b> GitHub repo, plus a full copy for restoring. Runs when the app opens or closes, at most every 15 minutes. The token stays on this phone and never goes into the backup.</p>
