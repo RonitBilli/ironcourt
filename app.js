@@ -322,7 +322,11 @@ function ring(pct, size = 120, sw = 11) {
 function renderToday() {
   const k = todayKey(), d = day(k), p = P(), t = totals(d);
   const classes = classItems(k);
-  const sched = [...p.schedule.map((it) => ({ ...it, clash: clashWith(it, classes) })), ...cookReminders(k), ...classes].sort((a, b) => mins(a.time) - mins(b.time));
+  const items = p.schedule.map((it) => ({ ...it, time: d.moved?.[it.id] || it.time, moved: !!d.moved?.[it.id] }));
+  const sched = [...items.map((it) => ({ ...it, clash: clashWith(it, classes) })), ...cookReminders(k), ...classes].sort((a, b) => mins(a.time) - mins(b.time));
+  const gymItem = items.find((x) => x.kind === "gym");
+  const gymClash = gymItem && !gymItem.moved && clashWith(gymItem, classes);
+  const gymSlot = gymClash ? freeSlot(classes, 75, gymItem.time) : null;
   const tasks = sched.filter((x) => !x.cls);
   const now = nowMins();
   let nowIdx = -1;
@@ -364,6 +368,9 @@ function renderToday() {
     </section>
 
     ${recovery}
+    ${gymClash ? `<section class="card week1"><b>Gym clashes with ${esc(gymClash)}</b>
+      <p class="small">${gymSlot ? `Next free 75 minutes: <b>${fmtTime(gymSlot)}</b>.` : "No free 75-minute gap before squash today."}</p>
+      <div class="row wrap">${gymSlot ? `<button class="btn small primary" data-a="move-gym" data-t="${gymSlot}">Move gym to ${fmtTime(gymSlot)}</button>` : ""}<button class="btn small" data-a="move-gym" data-t="">Keep ${fmtTime(gymItem.time)}</button></div></section>` : ""}
     <section class="card next">${next}</section>
     ${partyCard}
 
@@ -381,7 +388,7 @@ function renderToday() {
         let sub = "";
         if (it.kind === "meal") { const slot = p.meals.find((m) => m.id === it.ref); if (slot) { const o = mealOpt(slot, d, k); sub = `${o.veg ? '<i class="veg"></i>' : ""}${esc(o.name)} · ${o.protein} g protein`; } }
         if (it.sub) sub = esc(it.sub);
-        if (it.kind === "gym") sub = aw ? "In progress" : doneW ? "Logged" : sid === "REST" ? "Rest day in rotation" : esc(se?.name || "");
+        if (it.kind === "gym") sub = (it.moved ? "Moved today · " : "") + (aw ? "In progress" : doneW ? "Logged" : sid === "REST" ? "Rest day in rotation" : esc(se?.name || ""));
         if (it.clash) sub = `<b class="warn-text">Clashes with ${esc(it.clash)}</b>${sub ? " · " + sub : ""}`;
         return `<div class="tl ${i === nowIdx ? "now" : ""} ${on ? "done" : ""} ${it.cls ? "cls" : ""}">
           <span class="t">${fmtTime(it.time)}</span><span class="dot k-${it.kind}"></span>
@@ -445,6 +452,16 @@ function clashWith(it, classes) {
   const b = a.getTime() + len * 60e3;
   const hit = classes.find((c) => c.s < b && c.e > a.getTime());
   return hit ? `${hit.title} (${fmtTime(hhmm(hit.s))})` : "";
+}
+
+// First gap of `len` minutes between 10:30 and squash that misses every class (15 min buffer).
+function freeSlot(classes, len, prefer) {
+  const squash = P().schedule.find((x) => x.kind === "squash");
+  const latest = squash ? mins(squash.time) - len - 30 : 17 * 60;
+  const busy = classes.map((c) => { const a = new Date(c.s), b = new Date(c.e); return [a.getHours() * 60 + a.getMinutes() - 15, b.getHours() * 60 + b.getMinutes() + 15]; });
+  const start = Math.max(10 * 60 + 30, Math.min(mins(prefer), 10 * 60 + 30));
+  for (let t = start; t <= latest; t += 15) if (!busy.some(([a, b]) => t < b && t + len > a)) return `${pad(Math.floor(t / 60))}:${pad(t % 60)}`;
+  return null;
 }
 
 // ---------- phone sync: reminders + alarms ----------
@@ -1164,7 +1181,7 @@ function renderPlan() {
       <li>Add <b>Find Health Samples</b>: Sleep Analysis, Start Date in the last 1 day. Add <b>Calculate Statistics</b>: Sum (it gives hours or minutes; set the unit to Hours).</li>
       <li>Add <b>Open URLs</b> with: <code>infinity://health?steps=</code>[Steps sum]<code>&amp;sleep=</code>[Sleep sum]</li>
     </ol>`;
-  const classes = `<p class="small muted">Shows your Outlook classes on Today and warns when gym or squash clashes. Uses your calendar's published link; nothing to install.</p>
+  const classes = `<p class="small muted">Shows your Outlook classes on Today, warns when gym or squash clashes, and offers to move gym to the next free slot. Uses your calendar's published link. On the home-screen app, GitHub fetches it every 3 hours into your private backup repo (needs the GitHub backup set up below).</p>
     <ol class="small steps">
       <li>On a laptop, open Outlook on the web (outlook.office.com) → Settings → Calendar → Shared calendars.</li>
       <li>Under <b>Publish a calendar</b>, pick your calendar, choose <b>Can view all details</b>, tap Publish.</li>
@@ -1242,7 +1259,14 @@ function onChange(e) {
     save(); render(); return openMealSheet();
   }
   if (el.dataset.aChange === "gh") { ghSet(el.dataset.f, el.value.trim()); return render(); }
-  if (el.dataset.aChange === "ics") { Cal.setUrl(el.value); Cal.refresh(true).then((r) => { toast(r.ok ? "Classes loaded" : `Couldn't load: ${r.why}`); render(); }); return; }
+  if (el.dataset.aChange === "ics") {
+    Cal.setUrl(el.value).then(() => {
+      if (Native.on) return Cal.refresh(true).then((r) => { toast(r.ok ? "Classes loaded" : `Couldn't load: ${r.why}`); render(); });
+      toast("Link saved. GitHub fetches your classes in about a minute; tap Refresh then.");
+      render();
+    }).catch((e) => toast(`Couldn't save the link: ${e.message}`));
+    return;
+  }
   if (el.dataset.aChange === "sess-pick") { ui.editSession = el.value; ui.confirm = null; return render(); }
   if (el.dataset.aChange === "ex-video") { const id = ytId(el.value); if (!id && el.value.trim()) { toast("That doesn't look like a YouTube link"); return; } P().exercises[ui.editEx][el.dataset.f || "video"] = id; save(); return render(); }
   const path = el.dataset.bind;
@@ -1366,6 +1390,12 @@ const actions = {
   },
   undo: () => doUndo(),
   "phone-sync": () => syncNative(true),
+  "move-gym": (b) => {
+    const d = day(), gym = P().schedule.find((x) => x.kind === "gym"); if (!gym) return;
+    d.moved ??= {};
+    d.moved[gym.id] = b.dataset.t || gym.time;
+    save(); render(); toast(b.dataset.t ? `Gym moved to ${fmtTime(b.dataset.t)} today` : "Keeping gym where it is");
+  },
   "ics-refresh": async () => { toast("Loading classes…"); const r = await Cal.refresh(true); toast(r.ok ? "Classes updated" : `Couldn't load: ${r.why}`); render(); },
   "party-toggle": () => { const d = day(); d.party = !isParty(); save(); render(); },
   eat: (b) => { const d = day(); d.eaten[b.dataset.id] = !d.eaten[b.dataset.id]; save(); render(); },
@@ -1555,6 +1585,11 @@ async function ghRestore() {
   } catch (e) { toast(`Restore failed: ${e.message}`); }
 }
 
+Cal.useRemote(
+  async () => { const f = await ghApi("GET", "data/classes.json"); return f ? JSON.parse(unb64(f.content)) : null; },
+  async (u) => { const c = ghConf(); if (!c.repo || !c.token) return; const meta = ghMeta(); await ghPut("config/ics-url.txt", u, meta); ghSaveMeta(meta); },
+);
+
 // ================= boot =================
 if (S.active && activeWorkout()) wakeLock(true);
 render();
@@ -1578,8 +1613,9 @@ render();
   render();
   syncNative();
 })();
+try { navigator.storage?.persist?.(); } catch {}
 setTimeout(() => ghBackup(false), 4000);
-document.addEventListener("visibilitychange", () => { if (document.hidden) ghBackup(false); });
+document.addEventListener("visibilitychange", () => { if (document.hidden) ghBackup(false); else if (!Native.on) Cal.refresh().then(() => ui.tab === "today" && render()); });
 // Re-render on the hour boundary so "now" in the schedule moves and the 4am day rollover happens.
 let lastKey = todayKey();
 setInterval(() => {

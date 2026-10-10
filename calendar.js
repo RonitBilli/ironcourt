@@ -6,7 +6,15 @@ const Cal = (() => {
   const get = (k) => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } };
   const put = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
   const url = () => (localStorage.getItem(URL_KEY) || "").trim();
-  function setUrl(u) { try { localStorage.setItem(URL_KEY, u.trim().replace(/^webcal:/i, "https:")); localStorage.removeItem(CACHE_KEY); } catch {} }
+  // On the website the browser can't read Outlook directly, so the link is saved to the private
+  // GitHub repo, a GitHub job fetches the calendar every 3 hours, and the app reads its result.
+  let remote = null, saveRemote = null;
+  function useRemote(read, save) { remote = read; saveRemote = save; }
+  async function setUrl(u) {
+    const clean = u.trim().replace(/^webcal:/i, "https:");
+    try { localStorage.setItem(URL_KEY, clean); localStorage.removeItem(CACHE_KEY); } catch {}
+    if (!Native.on && saveRemote) await saveRemote(clean);
+  }
 
   // ---- ICS parsing ----
   function unfold(text) { return text.replace(/\r\n[ \t]/g, "").replace(/\n[ \t]/g, "").split(/\r?\n/); }
@@ -74,6 +82,16 @@ const Cal = (() => {
   async function refresh(force = false) {
     const u = url(); if (!u) return { ok: false, why: "no link" };
     const c = get(CACHE_KEY);
+    if (!Native.on) {
+      if (!remote) return { ok: false, why: "set up the GitHub backup first" };
+      if (!force && c && Date.now() - (c.checked || 0) < 3600e3) return { ok: true, cached: true };
+      try {
+        const r = await remote();
+        if (!r) { put(CACHE_KEY, { ...(c || { events: [] }), checked: Date.now(), err: "waiting for GitHub to fetch your calendar (about a minute after saving the link)" }); return { ok: false, why: "not fetched yet, try again in a minute" }; }
+        put(CACHE_KEY, { at: r.at, events: r.events || [], err: r.err || "", checked: Date.now() });
+        return r.err ? { ok: false, why: r.err } : { ok: true };
+      } catch (e) { return { ok: false, why: e.message }; }
+    }
     if (!force && c && Date.now() - c.at < 6 * 3600e3) return { ok: true, cached: true };
     try {
       const res = await fetch(u, { cache: "no-store" });
@@ -85,7 +103,7 @@ const Cal = (() => {
       put(CACHE_KEY, { at: Date.now(), events: parse(text, from, to) });
       return { ok: true };
     } catch (e) {
-      const why = Native.on ? e.message : "the browser blocks this link; it works in the iPhone app";
+      const why = e.message;
       put(CACHE_KEY, { ...(c || { events: [] }), at: c?.at || 0, err: why });
       return { ok: false, why };
     }
@@ -98,5 +116,5 @@ const Cal = (() => {
     return (c.events || []).filter((e) => e.s < b && e.e > a);
   }
   const status = () => { const c = get(CACHE_KEY); return { url: url(), at: c?.at || 0, err: c?.err || "", n: (c?.events || []).length }; };
-  return { url, setUrl, refresh, eventsOn, status, parse };
+  return { url, setUrl, refresh, eventsOn, status, parse, useRemote };
 })();
