@@ -13,12 +13,12 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
 const uid = () => Math.random().toString(36).slice(2, 9);
 
 function freshState() {
-  return { plan: clone(DEFAULT_PLAN), days: {}, workouts: [], active: null, rot: { cut: 0, term: 0 }, swaps: {} };
+  return { plan: clone(DEFAULT_PLAN), days: {}, workouts: [], active: null, rot: { cut: 0, term: 0 }, swaps: {}, week: {} };
 }
 
 function migrate(s) {
   const base = freshState();
-  if (!s || typeof s !== "object") return base;
+  if (!s || typeof s !== "object") s = base;
   for (const k of Object.keys(base)) if (s[k] === undefined) s[k] = base[k];
   for (const k of Object.keys(DEFAULT_PLAN)) if (s.plan[k] === undefined) s.plan[k] = clone(DEFAULT_PLAN[k]);
   // New library exercises arrive with app updates; user edits to existing ones are kept.
@@ -36,6 +36,18 @@ function migrate(s) {
     if (!s.plan.foods.some((f) => f[0] === "Chai, no sugar")) s.plan.foods.push(["Chai, no sugar", 45, 3]);
     s.plan.version = 2;
   }
+  // v3: household cook planner (both people), party log, undo. Lunch and dinner on my
+  // meal list now come from the cook plan.
+  if (s.plan.version < 3) {
+    s.plan.household = { me: "", partner: "", cook: "Bhaiya", nonveg: 5, chickenG: 250, myBread: { lunch: 2, dinner: 1 }, since: new Date(Date.now() - 4 * 3600e3).toLocaleDateString("en-CA") };
+    s.plan.dishes = clone(DISHES);
+    s.plan.pantryLow = {};
+    for (const m of s.plan.meals) if (m.id === "lunch" || m.id === "dinner") m.cook = true;
+    s.plan.version = 3;
+  }
+  for (const [id, d] of Object.entries(DISHES)) if (!s.plan.dishes[id]) s.plan.dishes[id] = clone(d);
+  s.week ??= {};
+  for (const [k, d] of Object.entries(s.days)) d.key = k;
   s.plan.schedule.forEach((it) => { if (!it.id) it.id = uid(); });
   return s;
 }
@@ -70,7 +82,7 @@ const exInfo = (id) => P().exercises[id] || { name: id, muscle: "", video: "", c
 const ALCOHOL = /beer|whisky|rum|vodka|gin|wine|peg|alcohol|cocktail/i;
 
 function day(k = todayKey()) {
-  if (!S.days[k]) S.days[k] = { checks: {}, water: 0, eaten: {}, choice: {}, extra: [], partyChecks: {} };
+  if (!S.days[k]) S.days[k] = { key: k, checks: {}, water: 0, eaten: {}, choice: {}, extra: [], partyChecks: {} };
   return S.days[k];
 }
 function isParty(k = todayKey()) {
@@ -78,9 +90,14 @@ function isParty(k = todayKey()) {
   if (d && d.party !== undefined) return d.party;
   return P().partyDates.includes(k);
 }
-function mealOpt(slot, d) {
+// Lunch and dinner come from the cook plan when there is one; otherwise the slot's own options.
+function mealOpt(slot, d, k = d.key) {
+  if (slot.cook && k && k >= (H().since || "")) {
+    const e = mealEntry(k, slot.id);
+    if (e && !e.off) { const dd = DISH(e.dish), m = myPlate(e, slot.id); return { name: dd.name, detail: addonSummary(e), kcal: m.kcal, protein: m.p, veg: dd.diet !== "nonveg", fromCook: true }; }
+  }
   const i = d.choice[slot.id] ?? 0;
-  return slot.options[i] || slot.options[0];
+  return { ...(slot.options[i] || slot.options[0]), veg: !!slot.veg };
 }
 function totals(d) {
   let kcal = 0, protein = 0;
@@ -297,12 +314,12 @@ function ring(pct, size = 120, sw = 11) {
 // ================= TODAY =================
 function renderToday() {
   const k = todayKey(), d = day(k), p = P(), t = totals(d);
-  const sched = [...p.schedule].sort((a, b) => mins(a.time) - mins(b.time));
+  const sched = [...p.schedule, ...cookReminders(k)].sort((a, b) => mins(a.time) - mins(b.time));
   const now = nowMins();
   let nowIdx = -1;
   sched.forEach((it, i) => { if (mins(it.time) <= now) nowIdx = i; });
   const doneW = workoutsOn(k).length > 0;
-  const checked = (it) => it.kind === "meal" ? !!d.eaten[it.ref] : it.kind === "gym" ? !!d.checks[it.id] || doneW : !!d.checks[it.id];
+  const checked = (it) => it.kind === "meal" ? !!d.eaten[it.ref] : it.kind === "gym" ? !!d.checks[it.id] || doneW : it.go && it.go.meal ? !!S.week[weekOf(it.go.k)]?.sent?.[`${it.go.k}.${it.go.meal}`] : !!d.checks[it.id];
   const nChecked = sched.filter(checked).length;
   const goals = [t.protein >= p.targets.protein, d.water >= p.targets.water];
   const score = Math.round(((nChecked + goals.filter(Boolean).length) / (sched.length + goals.length)) * 100);
@@ -322,17 +339,8 @@ function renderToday() {
   else next = `<p class="muted">No rotation set. Add sessions in Plan.</p>`;
 
   const party = isParty(k);
-  const partyCard = party ? `
-    <section class="card party">
-      <div class="spread"><h2>Party mode</h2><span class="chip warn">${drinksOf(d)} drinks</span></div>
-      <div class="stack">${p.partyRules.map((r, i) => `
-        <div class="row"><button class="check ${d.partyChecks[i] ? "on" : ""}" data-a="pcheck" data-i="${i}" aria-label="Done"></button><span class="grow">${esc(r)}</span></div>`).join("")}</div>
-      <div class="row wrap">
-        <button class="btn small" data-a="drink" data-n="Whisky / rum, 30 ml" data-k="70">+ Peg (70)</button>
-        <button class="btn small" data-a="drink" data-n="Beer, 330 ml" data-k="140">+ Beer 330 (140)</button>
-        <button class="btn small" data-a="drink" data-n="Strong beer, 650 ml" data-k="390">+ Strong 650 (390)</button>
-      </div>
-    </section>` : "";
+  const partyCard = party ? partyCardHTML(k, d) : "";
+  const recovery = recoveryCardHTML(k, d);
 
   const isSunday = parseKey(k).getDay() === 0;
 
@@ -346,6 +354,7 @@ function renderToday() {
       </div>
     </section>
 
+    ${recovery}
     <section class="card next">${next}</section>
     ${partyCard}
 
@@ -361,12 +370,13 @@ function renderToday() {
       ${sched.map((it, i) => {
         const on = checked(it);
         let sub = "";
-        if (it.kind === "meal") { const slot = p.meals.find((m) => m.id === it.ref); if (slot) { const o = mealOpt(slot, d); sub = `${slot.veg ? '<i class="veg"></i>' : ""}${esc(o.name)} · ${o.protein} g protein`; } }
+        if (it.kind === "meal") { const slot = p.meals.find((m) => m.id === it.ref); if (slot) { const o = mealOpt(slot, d, k); sub = `${o.veg ? '<i class="veg"></i>' : ""}${esc(o.name)} · ${o.protein} g protein`; } }
+        if (it.sub) sub = esc(it.sub);
         if (it.kind === "gym") sub = aw ? "In progress" : doneW ? "Logged" : sid === "REST" ? "Rest day in rotation" : esc(se?.name || "");
         return `<div class="tl ${i === nowIdx ? "now" : ""} ${on ? "done" : ""}">
           <span class="t">${fmtTime(it.time)}</span><span class="dot k-${it.kind}"></span>
-          <div class="what"><b>${esc(it.title)}</b>${sub ? `<span>${sub}</span>` : ""}</div>
-          <button class="check ${on ? "on" : ""}" data-a="tcheck" data-id="${it.id}" aria-label="Mark ${esc(it.title)} done"></button></div>`;
+          <div class="what" ${it.go ? `data-a="tl-go" data-id="${it.id}" role="button" tabindex="0"` : ""}><b>${esc(it.title)}${it.go ? " ›" : ""}</b>${sub ? `<span>${sub}</span>` : ""}</div>
+          <button class="check ${on ? "on" : ""}" data-a="${it.dyn ? "dcheck" : "tcheck"}" data-id="${it.id}" aria-label="Mark ${esc(it.title)} done"></button></div>`;
       }).join("")}
     </div></section>
 
@@ -379,9 +389,66 @@ function renderToday() {
       <div class="field"><label for="note">Note for today</label><input id="note" type="text" placeholder="Energy, sleep, anything off" value="${esc(d.note ?? "")}" data-bind="days.${k}.note" data-type="str"></div>
     </section>
 
-    <section class="card flat"><div class="spread"><div><b>Party day?</b><p class="small muted">Switches on the damage-control checklist and drink log.</p></div>
-      <button class="btn small" data-a="party-toggle">${party ? "Turn off" : "Turn on"}</button></div></section>`;
+    ${party ? `<section class="card flat"><div class="spread"><div><b>Party over?</b><p class="small muted">Turning it off keeps everything you logged.</p></div>
+      <button class="btn small" data-a="party-toggle">Turn off</button></div></section>` : `<section class="card flat"><div class="spread"><div><b>Unplanned party?</b><p class="small muted">Opens the drink and party-food log for today.</p></div>
+      <button class="btn small primary" data-a="party-toggle">Party now</button></div></section>`}
+
+    <section class="card flat"><div><b>Start over today?</b><p class="small muted">Clears today's ticks, food, water, steps, weight and party log. You can undo it.</p></div>
+      <div class="row wrap"><button class="btn small" data-a="reset-day" data-w="0">${ui.confirm === "reset-day-0" ? "Tap again to reset" : "Reset today"}</button>
+      ${doneW ? `<button class="btn small ghost" data-a="reset-day" data-w="1">${ui.confirm === "reset-day-1" ? "Tap again: reset + delete workout" : "Reset + delete today's workout"}</button>` : ""}</div></section>`;
 }
+
+// Reminders that come from the cook plan: send messages, soak pulses, order groceries.
+function cookReminders(k) {
+  const out = [];
+  if (isCookDay(k)) {
+    const e = mealEntry(k, "dinner");
+    if (e && !e.off) out.push({ id: "dyn-dinner", dyn: true, time: "15:30", title: "Send dinner message to cook", kind: "cook", sub: DISH(e.dish).name, go: { k, meal: "dinner" } });
+  }
+  const tm = addDays(k, 1);
+  if (isCookDay(tm)) {
+    const e = mealEntry(tm, "lunch");
+    if (e && !e.off) {
+      if (DISH(e.dish).soak) out.push({ id: "dyn-soak", dyn: true, time: "22:00", title: `Soak ${DISH(e.dish).soak} for tomorrow`, kind: "habit", sub: "In water overnight" });
+      out.push({ id: "dyn-lunch", dyn: true, time: "23:00", title: "Send tomorrow's lunch message", kind: "cook", sub: DISH(e.dish).name, go: { k: tm, meal: "lunch" } });
+    }
+  }
+  const dow = parseKey(k).getDay();
+  if (dow === 0) out.push({ id: "dyn-groc", dyn: true, time: "11:00", title: "Order groceries for the week", kind: "cook", go: { groc: true } });
+  if (dow === 3 && groceries(weekOf(k)).mid.length) out.push({ id: "dyn-chk", dyn: true, time: "18:00", title: "Order chicken for Thu-Sat", kind: "cook", go: { groc: true } });
+  return out;
+}
+
+// ---------- party ----------
+const PARTY_DRINKS = [["Peg (30 ml)", "Whisky / rum, 30 ml", 70], ["Beer 330", "Beer, 330 ml", 140], ["Strong beer 650", "Strong beer, 650 ml", 390], ["Wine glass", "Wine, 150 ml", 125], ["Cocktail", "Cocktail", 220], ["Shot", "Vodka / gin shot, 30 ml", 65]];
+const PARTY_FOOD = [["Pizza slice", 280, 12], ["Fries (portion)", 350, 4], ["Chicken starter (plate)", 450, 35], ["Paneer tikka (plate)", 380, 20], ["Burger", 500, 20], ["Nachos (plate)", 450, 8], ["Biryani (plate)", 700, 25], ["Momos (6)", 300, 12], ["Late-night maggi", 400, 8]];
+function partyCardHTML(k, d) {
+  const p = P(), drinks = d.extra.filter((x) => x.alcohol);
+  const kcal = drinks.reduce((a, x) => a + x.kcal * (x.qty || 1), 0);
+  const logged = d.extra.filter((x) => x.party || x.alcohol);
+  return `<section class="card party">
+    <div class="spread"><h2>Party mode</h2><span class="chip warn">${drinksOf(d)} drinks · ${kcal} kcal</span></div>
+    <div class="stack">${p.partyRules.map((r, i) => `
+      <div class="row"><button class="check ${d.partyChecks[i] ? "on" : ""}" data-a="pcheck" data-i="${i}" aria-label="Done"></button><span class="grow">${esc(r)}</span></div>`).join("")}</div>
+    <span class="eyebrow">Log a drink</span>
+    <div class="opts wrap">${PARTY_DRINKS.map(([l, n, kc]) => `<button class="opt" data-a="drink" data-n="${esc(n)}" data-k="${kc}">+ ${esc(l)}</button>`).join("")}</div>
+    <span class="eyebrow">Party food</span>
+    <div class="opts wrap">${PARTY_FOOD.map(([n, kc, pr]) => `<button class="opt" data-a="pfood" data-n="${esc(n)}" data-k="${kc}" data-p="${pr}">+ ${esc(n)}</button>`).join("")}</div>
+    ${logged.length ? `<div class="stack small">${logged.map((x) => `<div class="spread"><span>${x.t ? `<span class="muted num">${x.t}</span> ` : ""}${x.qty > 1 ? x.qty + "× " : ""}${esc(x.name)}</span><span class="muted num">${Math.round(x.kcal * (x.qty || 1))} kcal</span></div>`).join("")}</div>` : ""}
+    <div class="field"><label for="pnote">Where / with whom (optional)</label><input id="pnote" type="text" value="${esc(d.partyNote || "")}" data-bind="days.${k}.partyNote" data-type="str" placeholder="e.g. C-block, batch party"></div>
+  </section>`;
+}
+const RECOVERY = ["500 ml water with ORS or electrolytes now", "Eggs or a protein breakfast, not greasy food", "Train today; lighter is fine, skipping isn't", "3.5 L water through the day", "Back on the plan, no 'cheat day' follow-up"];
+function recoveryCardHTML(k, d) {
+  const y = S.days[addDays(k, -1)];
+  if (!y || !drinksOf(y)) return "";
+  const kcal = y.extra.filter((x) => x.alcohol).reduce((a, x) => a + x.kcal * (x.qty || 1), 0);
+  const r = d.recovery || {};
+  if (RECOVERY.every((_, i) => r[i])) return "";
+  return `<section class="card week1"><div class="spread"><h2>Morning after</h2><span class="chip warn">${drinksOf(y)} drinks · ${kcal} kcal</span></div>
+    <div class="stack">${RECOVERY.map((t, i) => `<div class="row"><button class="check ${r[i] ? "on" : ""}" data-a="rcheck" data-i="${i}" aria-label="Done"></button><span class="grow">${esc(t)}</span></div>`).join("")}</div></section>`;
+}
+
 
 // ================= TRAIN =================
 function exCard(item, idx, w) {
@@ -502,24 +569,221 @@ function openSheet(html) {
 }
 function closeSheet() { $("#sheet").hidden = true; $("#sheetBackdrop").hidden = true; $("#sheet").innerHTML = ""; }
 
-// ================= FOOD =================
+// ================= FOOD: household planner =================
+// The cook cooks for two: lunch is shared veg, most dinners are non-veg for me plus a veg
+// plan for the partner. The week (Mon-Sat) is generated once, then edited meal by meal.
+const H = () => P().household;
+const DISH = (id) => P().dishes[id] || DISHES[id] || null;
+const weekOf = (k) => { const dow = (parseKey(k).getDay() + 6) % 7; return addDays(k, -dow); }; // Monday
+const isCookDay = (k) => parseKey(k).getDay() !== 0;
+function rng(seed) { let s = seed >>> 0 || 1; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
+function shuffle(arr, r) { const a = [...arr]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+const hasPaneer = (d) => d && d.ing.includes("paneer");
+
+function entryFor(dishId, extra = {}) {
+  const d = DISH(dishId), a = d.add || {};
+  return { dish: dishId, b: a.b || "", n: a.n || 0, dal: a.dal || "", rice: a.rice || "", rq: a.rq || 2, salad: a.salad || "", pair: d.diet === "nonveg" ? d.pair || "dalchawal" : "", x: "", extras: [], note: "", off: false, missed: false, ...extra };
+}
+
+// Build Mon-Sat. Days before `fromK` are kept as they were.
+function genWeek(wk, seed, fromK = wk) {
+  const r = rng(seed), all = Object.entries(P().dishes);
+  const W = (S.week[wk] ??= { seed, days: {}, got: {} });
+  W.seed = seed;
+  const days = Array.from({ length: 6 }, (_, i) => addDays(wk, i));
+  const keep = days.filter((k) => k < fromK);
+  const used = new Set(keep.flatMap((k) => [W.days[k]?.lunch?.dish, W.days[k]?.dinner?.dish]).filter(Boolean));
+  const count = (f) => [...used].map(DISH).filter((d) => d && f(d)).length;
+
+  // Auto-planned lunches are the sabzi / gravy / dal kind; one-dish meals are picked by hand.
+  const lunchPool = shuffle(all.filter(([, d]) => d.meal.includes("lunch") && d.diet !== "nonveg" && d.kind !== "onedish").map(([id]) => id), r);
+  const vegDinnerPool = shuffle(all.filter(([, d]) => d.meal.includes("dinner") && d.diet === "veg" && d.kind === "onedish").map(([id]) => id), r)
+    .sort((a, b) => (DISH(b).left ? 1 : 0) - (DISH(a).left ? 1 : 0));
+  const nonvegPool = shuffle(all.filter(([, d]) => d.meal.includes("dinner") && d.diet === "nonveg").map(([id]) => id), r);
+
+  const nv = Math.max(0, Math.min(6, +H().nonveg || 5));
+  const vegSlots = new Set(Array.from({ length: 6 - nv }, (_, i) => Math.floor(((i + 1) * 6) / (7 - nv)) - 1));
+
+  const pick = (pool, ok) => { const id = pool.find((x) => !used.has(x) && ok(DISH(x))); if (id) used.add(id); return id || pool[0]; };
+  days.forEach((k, i) => {
+    if (k < fromK) return;
+    const lunch = pick(lunchPool, (d) =>
+      (!hasPaneer(d) || count(hasPaneer) < 2) && (d.kind !== "legume" || count((x) => x.kind === "legume") < 2) &&
+      (d.diet !== "egg" || count((x) => x.diet === "egg") < 1));
+    let dinner;
+    if (vegSlots.has(i)) dinner = pick(vegDinnerPool, () => true);
+    else dinner = pick(nonvegPool, (d) => !(d.ing.includes("prawns") && count((x) => x.ing.includes("prawns")) >= 1) && !(d.kind === "rice" && count((x) => x.kind === "rice" && x.diet === "nonveg") >= 1));
+    W.days[k] = { lunch: entryFor(lunch), dinner: entryFor(dinner) };
+  });
+  // Pairing pass: after a leftover-heavy veg dinner, the partner eats the leftovers next night.
+  days.forEach((k, i) => {
+    const e = W.days[k]?.dinner; if (!e || k < fromK || DISH(e.dish).diet !== "nonveg") return;
+    const prev = i > 0 ? W.days[days[i - 1]]?.dinner : null;
+    if (prev && DISH(prev.dish).left && DISH(prev.dish).diet === "veg") { e.pair = "leftover"; e.x = DISH(prev.dish).name.toLowerCase(); }
+    else if (e.pair === "split" && hasPaneer(DISH(W.days[k].lunch.dish))) e.pair = "splitveg";
+  });
+  save();
+  return W;
+}
+function weekFor(k) {
+  const wk = weekOf(k);
+  if (!S.week[wk] && diffDays(wk, weekOf(todayKey())) >= 0 && diffDays(wk, weekOf(todayKey())) <= 7) genWeek(wk, Date.now() % 100000);
+  return S.week[wk] || null;
+}
+function mealEntry(k, meal) { if (!isCookDay(k)) return null; return weekFor(k)?.days[k]?.[meal] || null; }
+
+// My plate: main portion + my share of the add-ons.
+function myPlate(e, meal) {
+  const d = DISH(e.dish); if (!d) return { kcal: 0, p: 0 };
+  let kcal = d.me.kcal, p = d.me.p;
+  const myB = Math.min(e.n, +H().myBread?.[meal] || 2);
+  if (e.b && ADDONS.b[e.b]) { kcal += myB * ADDONS.b[e.b].kcal; p += myB * ADDONS.b[e.b].p; }
+  if (e.dal && ADDONS.dal[e.dal]) { kcal += ADDONS.dal[e.dal].kcal; p += ADDONS.dal[e.dal].p; }
+  if (e.rice && ADDONS.rice[e.rice] && (e.rq === 2 || d.diet === "nonveg")) { kcal += ADDONS.rice[e.rice].kcal; p += ADDONS.rice[e.rice].p; }
+  if (e.salad && ADDONS.salad[e.salad]) { kcal += ADDONS.salad[e.salad].kcal; p += ADDONS.salad[e.salad].p; }
+  return { kcal: Math.round(kcal), p: Math.round(p) };
+}
+function addonSummary(e) {
+  const parts = [];
+  if (e.b && e.n) parts.push(`${e.n} ${ADDONS.b[e.b].label.toLowerCase()}`);
+  if (e.dal) parts.push(ADDONS.dal[e.dal].label.toLowerCase());
+  if (e.rice) parts.push(`${ADDONS.rice[e.rice].label.toLowerCase()}${e.rq === 1 ? " (1)" : ""}`);
+  if (e.salad) parts.push("salad");
+  return parts.join(" · ");
+}
+
+// ---------- cook messages: message 1 = what to cook, message 2 = add-ons + how ----------
+function cookMsgs(k, meal) {
+  const e = mealEntry(k, meal), h = H(), cook = h.cook || "Bhaiya";
+  const when = k === todayKey() ? "aaj" : k === addDays(todayKey(), 1) ? "kal" : fmtDay(k);
+  const mealHi = meal === "lunch" ? "lunch" : "dinner";
+  if (!e) return null;
+  if (e.off) return e.missed ? ["", ""] : [`${cook} ${when} ${mealHi} nahi banana hai, hum bahar khaayenge. Aap ${mealHi} ke liye mat aana.`, ""];
+  const d = DISH(e.dish), me = h.me ? `${h.me} ke liye` : "Mere liye", pn = h.partner || "partner";
+  const add = [], care = [];
+  if (e.b && e.n) add.push(ADDONS.b[e.b].hi(e.n));
+  if (e.dal) add.push(ADDONS.dal[e.dal].hi);
+  if (e.rice) add.push(`${ADDONS.rice[e.rice].hi[0].toUpperCase() + ADDONS.rice[e.rice].hi.slice(1)} (${e.rq === 1 ? "ek jan" : "2 log"} ke liye)`);
+  if (e.salad) add.push(ADDONS.salad[e.salad].hi);
+  for (const x of e.extras || []) add.push(`${x} bhi`);
+  care.push(...(d.tips || []));
+  const indian = ["sabzi", "gravy", "legume", "dry", "rice"].includes(d.kind);
+  if (indian) care.push(...TASTE.base);
+  if (d.kind === "gravy") care.push(TASTE.gravy);
+  if (e.dal || d.kind === "legume") care.push(TASTE.dal);
+  if (d.diet !== "nonveg" && ["sabzi", "gravy", "legume"].includes(d.kind)) care.push(TASTE.two);
+  if (d.diet === "nonveg" && !d.ing.includes("prawns")) care.push(`Chicken ${h.chickenG || 250} g, sirf ek jan ke liye`);
+  if (e.note) care.push(e.note);
+
+  let m1;
+  if (d.diet === "nonveg") {
+    const pr = PAIRS[e.pair];
+    const pline = pr && pr.hi ? pr.hi.replaceAll("{p}", pn).replace("{x}", e.x || "kal ka khaana") : "";
+    m1 = `${cook} ${when} ${mealHi} mai:\n1. *${me}: ${d.hi}*` + (pline ? `\n2. *${pline}*` : "");
+  } else {
+    m1 = `${cook} ${when} ${mealHi} mai:\n*${d.hi}*`;
+  }
+  if (d.link) m1 += `\n\nRecipe: ${d.link}`;
+  const m2 = (add.length ? `Saath mai yeh bhi banana hai:\n${add.map((x, i) => `${i + 1}. ${x}`).join("\n")}` : "") +
+    (care.length ? `${add.length ? "\n\n" : ""}Dhyaan dena:\n${care.map((x) => `• ${x}`).join("\n")}` : "");
+  if (m2) m1 += `\n\n👇 Agle message mai ${add.length ? "saath ki cheezein" : "zaroori baatein"} hai, woh bhi padh lena`;
+  return [m1, m2];
+}
+
+// Which message is due now: morning = today's lunch, afternoon = today's dinner, night = tomorrow's lunch.
+function dueMeal() {
+  const h = new Date().getHours(), t = todayKey();
+  if (h >= 4 && h < 11) return { k: t, meal: "lunch" };
+  if (h >= 11 && h < 19) return { k: t, meal: "dinner" };
+  return { k: addDays(t, 1), meal: "lunch" };
+}
+
+// ---------- groceries ----------
+function groceryWeek() {
+  const t = todayKey();
+  return parseKey(t).getDay() === 0 ? addDays(t, 1) : weekOf(t);
+}
+function groceries(wk) {
+  const W = S.week[wk] || genWeek(wk, Date.now() % 100000);
+  const t = todayKey(), from = wk > t ? wk : t;
+  const days = Array.from({ length: 6 }, (_, i) => addDays(wk, i)).filter((k) => k >= from);
+  const items = {}, chicken = { early: 0, late: 0, kheema: 0, drum: 0, prawns: 0 }, extras = new Set();
+  let paneer = 0;
+  const note = (name, why) => { (items[name] ??= new Set()).add(why); };
+  for (const k of days) for (const meal of ["lunch", "dinner"]) {
+    const e = W.days[k]?.[meal]; if (!e || e.off) continue;
+    const d = DISH(e.dish); if (!d) continue;
+    const late = parseKey(k).getDay() >= 4; // Thu-Sat chicken comes in the mid-week order
+    const ings = [...d.ing, ...((d.diet === "nonveg" && PAIRS[e.pair]?.ing) || [])];
+    for (const g of ings) {
+      if (g === "paneer") { paneer++; continue; }
+      if (g === "chicken") { chicken[late ? "late" : "early"] += +H().chickenG || 250; continue; }
+      if (g === "chicken kheema") { chicken.kheema += +H().chickenG || 250; continue; }
+      if (g === "chicken drumsticks") { chicken.drum += 4; continue; }
+      if (g === "prawns") { chicken.prawns += 250; continue; }
+      note(g, d.name);
+    }
+    if (e.salad === "kakdi" || e.salad === "beet") { note("kakdi", "salad"); note("gajar", "salad"); }
+    if (e.salad === "beet") note("beetroot", "salad");
+    if (e.salad === "lachha") { note("kanda", "lachha pyaaz"); note("nimbu", "lachha pyaaz"); }
+    for (const x of e.extras || []) extras.add(x);
+  }
+  for (const [g, why] of WEEKLY_BASICS) note(g, why);
+  if (paneer) note("paneer", `${paneer} × 200 g packs`);
+  const cats = {};
+  for (const [name, whys] of Object.entries(items)) {
+    const cat = Object.keys(GROCERY).find((c) => GROCERY[c].includes(name)) || "Other";
+    if (cat.startsWith("Pantry") && !P().pantryLow?.[name]) {
+      // Only list pantry items a planned dish needs if they're unusual (not kitchen staples).
+      if (!["besan", "maida", "breadcrumbs", "coconut milk", "pav bhaji masala", "rajma", "chhole", "kala chana", "tandoori masala"].includes(name)) continue;
+    }
+    (cats[cat] ??= []).push([name, [...whys].slice(0, 3).join(", ")]);
+  }
+  const low = Object.keys(P().pantryLow || {}).filter((x) => P().pantryLow[x]);
+  if (low.length) cats["Restock (running low)"] = low.map((x) => [x, "marked low"]);
+  const sun = [], mid = [];
+  if (chicken.early) sun.push(["chicken (boneless / curry cut)", `${chicken.early} g for Mon-Wed; freeze Wednesday's`]);
+  if (chicken.kheema) sun.push(["chicken kheema", `${chicken.kheema} g`]);
+  if (chicken.drum) sun.push(["chicken drumsticks", `${chicken.drum} pieces`]);
+  if (chicken.prawns) sun.push(["prawns", `${chicken.prawns} g`]);
+  if (chicken.late) mid.push(["chicken (boneless / curry cut)", `${chicken.late} g for Thu-Sat`]);
+  if (sun.length) cats["Chicken & fish"] = sun;
+  return { wk, days, cats, mid, extras: [...extras], got: W.got || (W.got = {}) };
+}
+function groceryText(g) {
+  const lines = [`Groceries for ${fmtDay(g.days[0] || g.wk)} - ${fmtDay(addDays(g.wk, 5))}`];
+  for (const [cat, list] of Object.entries(g.cats)) {
+    const open = list.filter(([n]) => !g.got[n]); if (!open.length) continue;
+    lines.push(`\n${cat}:`, ...open.map(([n, w]) => `- ${n}${w ? ` (${w})` : ""}`));
+  }
+  if (g.extras.length) lines.push("\nExtras:", ...g.extras.map((x) => `- ${x}`));
+  if (g.mid.length) lines.push("\nOrder on Wednesday:", ...g.mid.map(([n, w]) => `- ${n} (${w})`));
+  return lines.join("\n");
+}
+
+// ---------- Food tab ----------
 function renderFood() {
-  const k = todayKey(), d = day(k), p = P(), t = totals(d);
+  const k = todayKey(), d = day(k), p = P(), t = totals(d), h = H();
+  ui.cookSel ??= dueMeal();
   const isSunday = parseKey(k).getDay() === 0;
+  const setup = !h.partner ? `<section class="card week1"><b>Who's eating?</b><p class="small">Names go into the cook messages ("[name] ke liye…"). They stay on this phone.</p>
+    <div class="grid2"><div class="field"><label for="hMe">You (non-veg)</label><input id="hMe" type="text" value="${esc(h.me)}" data-bind="plan.household.me" data-type="str" placeholder="Your name"></div>
+    <div class="field"><label for="hP">Partner (veg)</label><input id="hP" type="text" value="${esc(h.partner)}" data-bind="plan.household.partner" data-type="str" data-rerender="1" placeholder="Partner's name"></div></div></section>` : "";
   return `
     <div class="meters">
-      <div class="meter"><span class="eyebrow">Protein</span><div class="val">${t.protein}<small> / ${p.targets.protein} g</small></div><div class="bar ${t.protein >= p.targets.protein ? "good" : ""}"><i style="width:${Math.min((t.protein / p.targets.protein) * 100, 100)}%"></i></div></div>
-      <div class="meter"><span class="eyebrow">Calories</span><div class="val">${t.kcal}<small> / ${p.targets.kcal}</small></div><div class="bar"><i style="width:${Math.min((t.kcal / p.targets.kcal) * 100, 100)}%"></i></div></div>
+      <div class="meter"><div class="meter-top"><span class="eyebrow">Protein</span>${ring((t.protein / p.targets.protein) * 100, 34, 5)}</div><div class="val">${t.protein}<small> / ${p.targets.protein} g</small></div></div>
+      <div class="meter"><div class="meter-top"><span class="eyebrow">Calories</span>${ring((t.kcal / p.targets.kcal) * 100, 34, 5)}</div><div class="val">${t.kcal}<small> / ${p.targets.kcal}</small></div></div>
     </div>
-    ${isSunday ? sundayCard() : ""}
-    <section class="card"><h2>Today's meals</h2>
+    ${setup}
+    ${cookCard()}
+    <section class="card"><h2>My meals today</h2>
       ${p.meals.map((slot) => {
-        const ci = d.choice[slot.id] ?? 0, o = mealOpt(slot, d), on = !!d.eaten[slot.id];
+        const ci = d.choice[slot.id] ?? 0, o = mealOpt(slot, d, k), on = !!d.eaten[slot.id];
         return `<div class="meal"><div class="spread"><div class="grow"><span class="eyebrow">${fmtTime(slot.time)} · ${esc(slot.name)}</span>
-          <h3>${slot.veg ? '<i class="veg" title="Vegetarian"></i>' : ""}${esc(o.name)}</h3></div>
+          <h3>${o.veg ? '<i class="veg" title="Vegetarian"></i>' : ""}${esc(o.name)}</h3></div>
           <button class="check ${on ? "on" : ""}" data-a="eat" data-id="${slot.id}" aria-label="Ate ${esc(slot.name)}"></button></div>
-          <p class="small muted">${esc(o.detail)}</p><p class="small num"><b>${o.protein} g</b> protein · ${o.kcal} kcal</p>
-          ${slot.options.length > 1 ? `<div class="opts">${slot.options.map((x, i) => `<button class="opt ${i === ci ? "on" : ""}" data-a="choose" data-id="${slot.id}" data-i="${i}">${esc(x.name)}</button>`).join("")}</div>` : ""}
+          <p class="small muted">${esc(o.detail)}</p><p class="small num"><b>${o.protein} g</b> protein · ${o.kcal} kcal${o.fromCook ? " · my plate" : ""}</p>
+          ${!o.fromCook && slot.options.length > 1 ? `<div class="opts">${slot.options.map((x, i) => `<button class="opt ${i === ci ? "on" : ""}" data-a="choose" data-id="${slot.id}" data-i="${i}">${esc(x.name)}</button>`).join("")}</div>` : ""}
         </div>`;
       }).join("")}
     </section>
@@ -530,12 +794,99 @@ function renderFood() {
         <input id="cName" type="text" placeholder="What was it?">
         <div class="grid2"><input id="cK" type="number" inputmode="numeric" placeholder="kcal"><input id="cP" type="number" inputmode="numeric" placeholder="protein g"></div>
         <button class="btn" data-a="food-custom">Add</button></div></details>
-      ${d.extra.length ? `<div>${d.extra.map((x, i) => `<div class="extra"><span class="grow">${x.qty > 1 ? `${x.qty}× ` : ""}${esc(x.name)}<br><span class="small muted num">${Math.round(x.kcal * (x.qty || 1))} kcal · ${Math.round(x.protein * (x.qty || 1))} g</span></span>
+      ${d.extra.length ? `<div>${d.extra.map((x, i) => `<div class="extra"><span class="grow">${x.qty > 1 ? `${x.qty}× ` : ""}${esc(x.name)}${x.t ? ` <span class="muted small">${x.t}</span>` : ""}<br><span class="small muted num">${Math.round(x.kcal * (x.qty || 1))} kcal · ${Math.round(x.protein * (x.qty || 1))} g</span></span>
         <div class="row"><button class="icon-btn" data-a="extra-q" data-i="${i}" data-v="-1" aria-label="Less">−</button><button class="icon-btn" data-a="extra-q" data-i="${i}" data-v="1" aria-label="More">+</button></div></div>`).join("")}</div>` : ""}
     </section>
-    ${!isSunday ? sundayCard() : ""}
-    ${cookCard()}`;
+    ${weekCard()}
+    ${groceryCard()}
+    ${isSunday ? sundayCard() : ""}`;
 }
+
+function cookCard() {
+  const sel = ui.cookSel, t = todayKey(), tm = addDays(t, 1);
+  const choices = [[t, "lunch", "Today lunch"], [t, "dinner", "Today dinner"], [tm, "lunch", "Tomorrow lunch"], [tm, "dinner", "Tomorrow dinner"]];
+  const e = mealEntry(sel.k, sel.meal);
+  const chips = `<div class="opts">${choices.map(([k, m, l]) => `<button class="opt ${sel.k === k && sel.meal === m ? "on" : ""}" data-a="cook-sel" data-k="${k}" data-m="${m}">${l}</button>`).join("")}</div>`;
+  if (!e) return `<section class="card"><div class="spread"><h2>Cook</h2></div>${chips}<p class="muted">No cooking on Sundays. See the order-in guide below.</p></section>`;
+  const d = DISH(e.dish), [m1, m2] = cookMsgs(sel.k, sel.meal), mine = myPlate(e, sel.meal);
+  const sent = S.week[weekOf(sel.k)]?.sent?.[`${sel.k}.${sel.meal}`];
+  return `<section class="card">
+    <div class="spread"><h2>Cook</h2>${sent ? `<span class="chip good">Sent</span>` : `<span class="chip accent">To send</span>`}</div>
+    ${chips}
+    <div class="spread"><div class="grow"><h3>${d.diet === "nonveg" ? "" : '<i class="veg"></i>'}${esc(e.off ? "No cooking" : d.name)}</h3>
+      <p class="small muted">${esc(e.off ? "Eating out" : addonSummary(e) || "No add-ons")}${!e.off ? ` · my plate ~${mine.kcal} kcal, ${mine.p} g protein` : ""}</p></div>
+      <button class="btn small" data-a="meal-edit" data-k="${sel.k}" data-m="${sel.meal}">Edit</button></div>
+    ${!m1 ? `<p class="hint">Cook didn't come. This dish moved to the next day.</p>` : `<span class="eyebrow">Message 1 · what to cook</span><pre class="msg">${esc(m1)}</pre>
+    <div class="row"><button class="btn grow primary" data-a="msg-copy" data-n="0">Copy message 1</button><button class="btn" data-a="msg-share" data-n="0" aria-label="Share message 1">Share</button></div>`}
+    ${m2 ? `<span class="eyebrow">Message 2 · add-ons and how</span><pre class="msg">${esc(m2)}</pre>
+    <div class="row"><button class="btn grow primary" data-a="msg-copy" data-n="1">Copy message 2</button><button class="btn" data-a="msg-share" data-n="1" aria-label="Share message 2">Share</button></div>` : ""}
+    <div class="row wrap"><button class="btn small ghost" data-a="msg-sent">${sent ? "Mark not sent" : "Mark as sent"}</button><button class="btn small ghost" data-a="cook-missed">${e.missed ? "Cook came after all" : "Cook didn't come"}</button></div>
+    ${e.missed ? `<div class="hint warn">Move ${esc(d.name)} to the next ${sel.meal}? The rest of the week's ${sel.meal}s shift by one day.<div class="row" style="margin-top:8px"><button class="btn small primary" data-a="cook-shift">Move it</button></div></div>` : ""}
+  </section>`;
+}
+
+function weekCard() {
+  const wk = weekOf(todayKey()), W = weekFor(todayKey()); if (!W) return "";
+  const days = Array.from({ length: 6 }, (_, i) => addDays(wk, i));
+  const nv = days.filter((k) => DISH(W.days[k]?.dinner?.dish)?.diet === "nonveg").length;
+  const row = (k, meal) => { const e = W.days[k]?.[meal]; if (!e) return ""; const d = DISH(e.dish);
+    return `<button class="fooditem ${k < todayKey() ? "past" : ""}" data-a="meal-edit" data-k="${k}" data-m="${meal}"><span class="grow"><span class="eyebrow">${meal}</span><br>${d.diet === "nonveg" ? "🍗 " : ""}${esc(e.off ? "No cooking" : d.name)}${d.soak ? ` <span class="chip">soak</span>` : ""}</span></button>`; };
+  return `<section class="card"><div class="spread"><h2>This week</h2><span class="chip">${nv} non-veg dinners</span></div>
+    ${days.map((k) => `<div class="weekday ${k === todayKey() ? "today" : ""}"><div class="wd">${esc(fmtDay(k).split(",")[0])}<span>${parseKey(k).getDate()}</span></div><div class="stack grow">${row(k, "lunch")}${row(k, "dinner")}</div></div>`).join("")}
+    <div class="row wrap"><button class="btn small" data-a="week-shuffle">${ui.confirm === "shuffle" ? "Tap again to reshuffle" : "Reshuffle rest of week"}</button>
+      <label class="small muted row">Non-veg dinners <select id="nvN" data-bind="plan.household.nonveg" data-type="num" data-rerender="1" style="width:auto">${[3, 4, 5, 6].map((n) => `<option ${+H().nonveg === n ? "selected" : ""}>${n}</option>`).join("")}</select></label></div>
+    <p class="small muted">Reshuffling keeps past days and anything you've already sent. Tap any meal to change it.</p></section>`;
+}
+
+function groceryCard() {
+  const g = groceries(groceryWeek());
+  const item = ([n, w]) => `<label class="gitem ${g.got[n] ? "got" : ""}"><input type="checkbox" ${g.got[n] ? "checked" : ""} data-a-change="got" data-n="${esc(n)}"><span class="grow">${esc(n)}${w ? `<span class="small muted"> · ${esc(w)}</span>` : ""}</span></label>`;
+  return `<section class="card"><div class="spread"><h2>Groceries</h2><span class="chip">${esc(fmtDay(g.wk))} week</span></div>
+    <p class="small muted">One order on Sunday for the week. Chicken for Thursday onwards comes in a second small order on Wednesday, so it's fresh. Tick what you already have or have ordered.</p>
+    ${Object.entries(g.cats).map(([cat, list]) => `<div class="stack"><span class="eyebrow">${esc(cat)}</span>${list.map(item).join("")}</div>`).join("")}
+    ${g.extras.length ? `<div class="stack"><span class="eyebrow">Extras you said yes to</span>${g.extras.map((x) => item([x, ""])).join("")}</div>` : ""}
+    ${g.mid.length ? `<div class="stack"><span class="eyebrow">Wednesday order</span>${g.mid.map(item).join("")}</div>` : ""}
+    <div class="row"><button class="btn grow primary" data-a="groc-copy">Copy list</button><button class="btn" data-a="groc-share">Share</button></div>
+    <details class="sec"><summary><span><b>Running low?</b><br><span class="small muted">Rice, dal, atta, oil, spices: tap what's running out. It joins the next order.</span></span></summary><div class="body">
+      ${Object.entries(PANTRY).map(([cat, list]) => `<span class="eyebrow">${cat}</span><div class="opts wrap">${list.map((x) => `<button class="opt ${P().pantryLow?.[x] ? "on" : ""}" data-a="pantry" data-n="${esc(x)}">${esc(x)}</button>`).join("")}</div>`).join("")}
+    </div></details></section>`;
+}
+
+function openMealSheet() {
+  const { k, meal } = ui.editMeal, e = mealEntry(k, meal); if (!e) return;
+  const d = DISH(e.dish);
+  const groups = [["Veg lunches", (x) => x.diet === "veg" && ["sabzi", "gravy", "legume"].includes(x.kind) && !x.ing.includes("paneer")], ["Paneer", (x) => x.diet === "veg" && x.ing.includes("paneer") && x.kind !== "onedish"], ["Eggs", (x) => x.diet === "egg"], ["One-dish meals", (x) => x.diet === "veg" && x.kind === "onedish"], ["Non-veg (for me)", (x) => x.diet === "nonveg"]];
+  const opts = groups.map(([g, f]) => `<optgroup label="${g}">${Object.entries(P().dishes).filter(([, x]) => f(x)).map(([id, x]) => `<option value="${id}" ${id === e.dish ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</optgroup>`).join("");
+  const sel = (field, map, none = "None") => `<select id="m-${field}" data-bind="@m.${field}" data-type="str" data-rerender="1"><option value="">${none}</option>${Object.entries(map).map(([id, a]) => `<option value="${id}" ${e[field] === id ? "selected" : ""}>${esc(a.label)}</option>`).join("")}</select>`;
+  openSheet(`
+    <div class="spread"><div><span class="eyebrow">${esc(fmtDay(k))} · ${meal}</span><h2>Edit meal</h2></div><button class="icon-btn" data-a="sheet-close" aria-label="Close">✕</button></div>
+    <label class="row small"><input type="checkbox" id="m-off" style="width:auto" ${e.off ? "checked" : ""} data-bind="@m.off" data-type="bool" data-rerender="1"> No cooking (eating out, party, travel)</label>
+    ${e.off ? "" : `
+    <div class="field"><label for="m-dish">Dish</label><select id="m-dish" data-a-change="meal-dish">${opts}</select></div>
+    ${d.link ? `<p class="small">Recipe: <a href="${esc(d.link)}" target="_blank" rel="noopener">${esc(d.link)}</a></p>` : ""}
+    ${d.diet === "nonveg" ? `<div class="field"><label for="m-pair">For ${esc(H().partner || "partner")}</label>${sel("pair", PAIRS, "Nothing")}</div>
+      ${e.pair === "leftover" ? `<div class="field"><label for="m-x">Which leftover?</label><input id="m-x" type="text" value="${esc(e.x)}" data-bind="@m.x" data-type="str" placeholder="e.g. pav bhaji"></div>` : ""}` : ""}
+    <div class="grid2"><div class="field"><label for="m-b">Bread</label>${sel("b", ADDONS.b)}</div>
+      <div class="field"><label for="m-n">How many</label><input id="m-n" type="number" inputmode="numeric" value="${e.n}" data-bind="@m.n" data-type="num" data-rerender="1"></div></div>
+    <div class="grid2"><div class="field"><label for="m-dal">Dal</label>${sel("dal", ADDONS.dal)}</div>
+      <div class="field"><label for="m-salad">Salad</label>${sel("salad", ADDONS.salad)}</div></div>
+    <div class="grid2"><div class="field"><label for="m-rice">Rice</label>${sel("rice", ADDONS.rice)}</div>
+      <div class="field"><label for="m-rq">Rice for</label><select id="m-rq" data-bind="@m.rq" data-type="num" data-rerender="1"><option value="2" ${e.rq === 2 ? "selected" : ""}>2 people</option><option value="1" ${e.rq === 1 ? "selected" : ""}>1 person</option></select></div></div>
+    ${(d.extras || []).length ? `<div class="field"><label>Add to the plan?</label>${d.extras.map((x) => `<label class="row small"><input type="checkbox" style="width:auto" ${e.extras.includes(x) ? "checked" : ""} data-a-change="meal-extra" data-n="${esc(x)}"> ${esc(x)} (goes on the grocery list and in the message)</label>`).join("")}</div>` : ""}
+    <div class="field"><label for="m-note">Extra instruction for the cook</label><input id="m-note" type="text" value="${esc(e.note)}" data-bind="@m.note" data-type="str" data-rerender="1" placeholder="e.g. fridge wala kata hua kanda use karna"></div>`}
+    <button class="btn primary block" data-a="sheet-close">Done</button>`);
+}
+
+function shiftMeal(k, meal) {
+  // Cook didn't come: this dish moves to the next cook day's same meal, the rest slide by one.
+  const wk = weekOf(k), W = S.week[wk]; if (!W) return;
+  const days = Array.from({ length: 6 }, (_, i) => addDays(wk, i)).filter((x) => x >= k);
+  const moved = days.map((x) => W.days[x]?.[meal]).filter(Boolean);
+  const first = clone(moved[0]); first.missed = false;
+  W.days[k][meal] = { ...moved[0], off: true, missed: true };
+  for (let i = 1; i < days.length; i++) W.days[days[i]][meal] = i === 1 ? first : clone(moved[i - 1]);
+}
+
 function foodListHTML() {
   const q = ui.foodQ.trim().toLowerCase();
   const foods = P().foods.filter((f) => !q || f[0].toLowerCase().includes(q));
@@ -546,18 +897,6 @@ function sundayCard() {
   return `<section class="card"><h2>Sunday order-in</h2>
     <div class="guide"><div><span class="eyebrow">Order</span><ul>${g.order.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>
     <div><span class="eyebrow">Skip</span><ul>${g.avoid.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div></div></section>`;
-}
-function cookMessage(lang) {
-  const p = P();
-  if (lang === "hi") return `Bhaiya, is hafte ka plan:\n\n${p.cookRulesHi.map((r) => "• " + r).join("\n")}\n\nSaaman ki list:\n${p.grocery.map((g) => "• " + g).join("\n")}\n\nShukriya!`;
-  return `Hi, here's the plan for this week:\n\n${p.cookRules.map((r) => "• " + r).join("\n")}\n\nGrocery list:\n${p.grocery.map((g) => "• " + g).join("\n")}\n\nThank you!`;
-}
-function cookCard() {
-  return `<section class="card"><div class="spread"><h2>Message for the cook</h2>
-    <div class="seg"><button class="${ui.lang === "en" ? "on" : ""}" data-a="lang" data-v="en">English</button><button class="${ui.lang === "hi" ? "on" : ""}" data-a="lang" data-v="hi">Hinglish</button></div></div>
-    <pre class="msg" id="cookMsg">${esc(cookMessage(ui.lang))}</pre>
-    <div class="row"><button class="btn grow" data-a="cook-copy">Copy</button><button class="btn primary grow" data-a="cook-share">Share to WhatsApp</button></div>
-    <p class="small muted">Edit the grocery list and rules in Plan → Diet.</p></section>`;
 }
 
 // ================= PROGRESS =================
@@ -744,13 +1083,22 @@ function renderPlan() {
     <div class="row"><input type="date" id="pdNew" class="grow"><button class="btn small" data-a="pd-add">Add date</button></div>
     <div class="field"><label>Party rules, one per line</label>${lines("plan.partyRules", p.partyRules)}</div>`;
 
-  const diet = `<div class="field"><label>Grocery list, one per line</label>${lines("plan.grocery", p.grocery)}</div>
-    <div class="field"><label>Cook rules (English)</label>${lines("plan.cookRules", p.cookRules)}</div>
-    <div class="field"><label>Cook rules (Hinglish)</label>${lines("plan.cookRulesHi", p.cookRulesHi)}</div>
+  const h = p.household;
+  const diet = `<div class="grid2"><div class="field"><label>Your name (non-veg)</label>${inp("plan.household.me", h.me)}</div><div class="field"><label>Partner (veg)</label>${inp("plan.household.partner", h.partner)}</div></div>
+    <div class="grid2"><div class="field"><label>How you address the cook</label>${inp("plan.household.cook", h.cook)}</div><div class="field"><label>Chicken per meal (g)</label>${inp("plan.household.chickenG", h.chickenG, "num")}</div></div>
+    <div class="grid2"><div class="field"><label>My rotis at lunch</label>${inp("plan.household.myBread.lunch", h.myBread.lunch, "num")}</div><div class="field"><label>My rotis / parathas at dinner</label>${inp("plan.household.myBread.dinner", h.myBread.dinner, "num")}</div></div>
     <div class="field"><label>Sunday: order</label>${lines("plan.sundayGuide.order", p.sundayGuide.order)}</div>
     <div class="field"><label>Sunday: skip</label>${lines("plan.sundayGuide.avoid", p.sundayGuide.avoid)}</div>`;
 
-  const backup = `<p class="small muted">Your data lives on this phone. Export a backup every week or two, and before deleting the app.</p>
+  const gh = ghConf(), meta = ghMeta();
+  const backup = `<span class="eyebrow">GitHub backup (automatic)</span>
+    <p class="small muted">Saves one small file per day to a <b>private</b> GitHub repo, plus a full copy for restoring. Runs when the app opens or closes, at most every 15 minutes. The token stays on this phone and never goes into the backup.</p>
+    <div class="field"><label for="ghRepo">Private repo (owner/name)</label><input id="ghRepo" type="text" value="${esc(gh.repo || "")}" data-a-change="gh" data-f="repo" placeholder="your-username/ironcourt-data" autocomplete="off"></div>
+    <div class="field"><label for="ghTok">Access token</label><input id="ghTok" type="password" value="${gh.token ? "••••••••" : ""}" data-a-change="gh" data-f="token" placeholder="github_pat_…" autocomplete="off"></div>
+    <p class="small ${meta.err ? "" : "muted"}">${meta.err ? `<b>Last attempt failed:</b> ${esc(meta.err)}` : meta.last ? `Last backup: ${new Date(meta.last).toLocaleString("en-IN")}` : "No backup yet."}</p>
+    <div class="row wrap"><button class="btn primary" data-a="gh-backup">Back up now</button><button class="btn" data-a="gh-restore">${ui.confirm === "gh-restore" ? "Tap again: replace this phone's data" : "Restore from GitHub"}</button></div>
+    <span class="eyebrow">File backup</span>
+    <p class="small muted">Your data lives on this phone. Export a backup every week or two, and before deleting the app.</p>
     <div class="row wrap"><button class="btn primary" data-a="export">Export backup</button><label class="btn" for="importFile">Import backup</label><input type="file" id="importFile" accept="application/json,.json" hidden></div>
     <button class="btn ghost" data-a="reset">${ui.confirm === "reset" ? "Tap again: erase everything" : "Reset app"}</button>`;
 
@@ -762,10 +1110,10 @@ function renderPlan() {
     ${sec("sessions", "Workouts", sessEd, `${sessIds.length} sessions`)}
     ${sec("exercises", "Exercises, videos, swaps", exEd, `${Object.keys(p.exercises).length} exercises`)}
     ${sec("meals", "Meals", meals, "Options you can switch between each day")}
-    ${sec("diet", "Diet: groceries, cook, Sunday", diet)}
+    ${sec("diet", "Household and cook", diet, `${esc(h.me || "You")} + ${esc(h.partner || "partner")} · ${h.nonveg} non-veg dinners a week`)}
     ${sec("party", "Party days", party, `${p.partyDates.length} dates`)}
     ${sec("backup", "Backup", backup)}
-    <p class="small muted" style="text-align:center">Ironcourt · your data never leaves this device unless you export it</p>`;
+    <p class="small muted" style="text-align:center">Ironcourt · data stays on this phone, plus your own GitHub backup if you set one up</p>`;
 }
 
 // ================= render =================
@@ -779,6 +1127,7 @@ function render() {
 // ================= events =================
 function resolveBind(path) {
   if (path.startsWith("@w.")) { const w = activeWorkout(); return w ? { obj: w, path: path.slice(3) } : null; }
+  if (path.startsWith("@m.")) { const m = ui.editMeal, e = m && mealEntry(m.k, m.meal); return e ? { obj: e, path: path.slice(3) } : null; }
   return { obj: S, path };
 }
 function readValue(el) {
@@ -789,8 +1138,25 @@ function readValue(el) {
   return el.value;
 }
 document.addEventListener("change", (e) => {
+  const before = JSON.stringify(S);
+  onChange(e);
+  afterMutation(before);
+});
+function onChange(e) {
   const el = e.target;
   if (el.id === "importFile") return importBackup(el.files[0]);
+  if (el.dataset.aChange === "got") { const g = groceries(groceryWeek()); g.got[el.dataset.n] = el.checked; save(); return render(); }
+  if (el.dataset.aChange === "meal-dish") {
+    const m = ui.editMeal, W = S.week[weekOf(m.k)], old = W.days[m.k][m.meal];
+    W.days[m.k][m.meal] = entryFor(el.value, { note: old.note });
+    save(); render(); return openMealSheet();
+  }
+  if (el.dataset.aChange === "meal-extra") {
+    const e2 = mealEntry(ui.editMeal.k, ui.editMeal.meal), n = el.dataset.n;
+    e2.extras = el.checked ? [...new Set([...(e2.extras || []), n])] : (e2.extras || []).filter((x) => x !== n);
+    save(); render(); return openMealSheet();
+  }
+  if (el.dataset.aChange === "gh") { ghSet(el.dataset.f, el.value.trim()); return render(); }
   if (el.dataset.aChange === "sess-pick") { ui.editSession = el.value; ui.confirm = null; return render(); }
   if (el.dataset.aChange === "ex-video") { const id = ytId(el.value); if (!id && el.value.trim()) { toast("That doesn't look like a YouTube link"); return; } P().exercises[ui.editEx][el.dataset.f || "video"] = id; save(); return render(); }
   const path = el.dataset.bind;
@@ -802,8 +1168,8 @@ document.addEventListener("change", (e) => {
   const m = r.path.match(/^plan\.schedule\.(\d+)\.kind$/);
   if (m && el.value === "meal") { const it = P().schedule[+m[1]]; if (!it.ref) it.ref = P().meals[0]?.id; }
   save();
-  if (el.dataset.rerender) render();
-});
+  if (el.dataset.rerender) { render(); if (path.startsWith("@m.") && !$("#sheet").hidden) openMealSheet(); }
+}
 document.addEventListener("input", (e) => {
   const el = e.target;
   if (el.id === "foodQ") { ui.foodQ = el.value; $("#foodList").innerHTML = foodListHTML(); }
@@ -865,7 +1231,53 @@ const actions = {
     save(); render();
   },
   pcheck: (b) => { const d = day(); d.partyChecks[b.dataset.i] = !d.partyChecks[b.dataset.i]; save(); render(); },
-  drink: (b) => { addExtra(b.dataset.n, +b.dataset.k, 0); toast("Drink logged"); },
+  drink: (b) => { addExtra(b.dataset.n, +b.dataset.k, 0, { party: true }); toast("Drink logged"); },
+  pfood: (b) => { addExtra(b.dataset.n, +b.dataset.k, +b.dataset.p, { party: true }); toast("Logged"); },
+  rcheck: (b) => { const d = day(); d.recovery ??= {}; d.recovery[b.dataset.i] = !d.recovery[b.dataset.i]; save(); render(); },
+  dcheck: (b) => {
+    const it = cookReminders(todayKey()).find((x) => x.id === b.dataset.id); if (!it) return;
+    if (it.go?.meal) { const W = S.week[weekOf(it.go.k)]; W.sent ??= {}; const key = `${it.go.k}.${it.go.meal}`; W.sent[key] = !W.sent[key]; }
+    else { const d = day(); d.checks[it.id] = !d.checks[it.id]; }
+    save(); render();
+  },
+  "tl-go": (b) => {
+    const it = cookReminders(todayKey()).find((x) => x.id === b.dataset.id); if (!it?.go) return;
+    ui.tab = "food"; if (it.go.meal) ui.cookSel = { k: it.go.k, meal: it.go.meal };
+    render(); window.scrollTo(0, 0);
+    if (it.go.groc) setTimeout(() => document.querySelector("[data-a='groc-copy']")?.scrollIntoView({ block: "center" }), 50);
+  },
+  "reset-day": (b) => {
+    const key = "reset-day-" + b.dataset.w;
+    if (ui.confirm !== key) { ui.confirm = key; return render(); }
+    ui.confirm = null;
+    const k = todayKey();
+    S.days[k] = { key: k, checks: {}, water: 0, eaten: {}, choice: {}, extra: [], partyChecks: {} };
+    if (b.dataset.w === "1") { S.workouts = S.workouts.filter((w) => w.date !== k || !w.done); }
+    save(); toast("Today reset. Tap Undo to bring it back."); render();
+  },
+  "cook-sel": (b) => { ui.cookSel = { k: b.dataset.k, meal: b.dataset.m }; render(); },
+  "meal-edit": (b) => { ui.editMeal = { k: b.dataset.k, meal: b.dataset.m }; openMealSheet(); },
+  "msg-copy": (b) => { const m = cookMsgs(ui.cookSel.k, ui.cookSel.meal); copyText(m[+b.dataset.n]); },
+  "msg-share": (b) => { const m = cookMsgs(ui.cookSel.k, ui.cookSel.meal); shareText(m[+b.dataset.n], "For the cook"); },
+  "msg-sent": () => { const { k, meal } = ui.cookSel, W = S.week[weekOf(k)]; W.sent ??= {}; W.sent[`${k}.${meal}`] = !W.sent[`${k}.${meal}`]; save(); render(); },
+  "cook-missed": () => { const e = mealEntry(ui.cookSel.k, ui.cookSel.meal); e.missed = !e.missed; save(); render(); },
+  "cook-shift": () => { shiftMeal(ui.cookSel.k, ui.cookSel.meal); save(); toast("Moved to the next day"); render(); },
+  "week-shuffle": () => {
+    if (ui.confirm !== "shuffle") { ui.confirm = "shuffle"; return render(); }
+    ui.confirm = null;
+    const t = todayKey(), wk = weekOf(t), W = S.week[wk];
+    const firstFree = Array.from({ length: 6 }, (_, i) => addDays(wk, i)).find((k) => k >= t && !W?.sent?.[`${k}.lunch`] && !W?.sent?.[`${k}.dinner`]) || addDays(wk, 6);
+    genWeek(wk, Date.now() % 100000, firstFree); render(); toast("New plan for the rest of the week");
+  },
+  pantry: (b) => { const pl = (P().pantryLow ??= {}); pl[b.dataset.n] = !pl[b.dataset.n]; save(); render(); },
+  "groc-copy": () => copyText(groceryText(groceries(groceryWeek()))),
+  "groc-share": () => shareText(groceryText(groceries(groceryWeek())), "Groceries"),
+  "gh-backup": () => ghBackup(true),
+  "gh-restore": () => {
+    if (ui.confirm !== "gh-restore") { ui.confirm = "gh-restore"; return render(); }
+    ui.confirm = null; ghRestore();
+  },
+  undo: () => doUndo(),
   "party-toggle": () => { const d = day(); d.party = !isParty(); save(); render(); },
   eat: (b) => { const d = day(); d.eaten[b.dataset.id] = !d.eaten[b.dataset.id]; save(); render(); },
   choose: (b) => { const d = day(); d.choice[b.dataset.id] = +b.dataset.i; save(); render(); },
@@ -875,9 +1287,6 @@ const actions = {
     addExtra(n, +$("#cK").value || 0, +$("#cP").value || 0);
   },
   "extra-q": (b) => { const d = day(), x = d.extra[+b.dataset.i]; x.qty = (x.qty || 1) + +b.dataset.v; if (x.qty <= 0) d.extra.splice(+b.dataset.i, 1); save(); render(); },
-  lang: (b) => { ui.lang = b.dataset.v; render(); },
-  "cook-copy": () => copyText(cookMessage(ui.lang)),
-  "cook-share": () => shareText(cookMessage(ui.lang), "For the cook"),
   "week-copy": () => copyText(weekSummary()),
   mode: (b) => { P().mode = b.dataset.v; save(); render(); },
   "sched-add": () => { P().schedule.push({ id: uid(), time: "12:00", title: "New item", kind: "habit" }); save(); render(); },
@@ -913,12 +1322,32 @@ const actions = {
   },
 };
 
-function addExtra(name, kcal, protein) {
-  const d = day();
-  const same = d.extra.find((x) => x.name === name && x.kcal === kcal);
+function addExtra(name, kcal, protein, flags = {}) {
+  const d = day(), now = new Date(), t = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  const same = !flags.party && d.extra.find((x) => x.name === name && x.kcal === kcal);
   if (same) same.qty = (same.qty || 1) + 1;
-  else d.extra.push({ name, kcal, protein, qty: 1, alcohol: ALCOHOL.test(name) });
+  else d.extra.push({ name, kcal, protein, qty: 1, alcohol: ALCOHOL.test(name), t, ...flags });
   save(); render();
+}
+
+// ================= undo =================
+// Every tap or edit that changes saved data can be undone for a few seconds.
+const undoStack = [];
+function afterMutation(before) {
+  if (JSON.stringify(S) === before) return;
+  undoStack.push(before);
+  if (undoStack.length > 30) undoStack.shift();
+  const u = $("#undo");
+  u.hidden = false;
+  clearTimeout(afterMutation.h);
+  afterMutation.h = setTimeout(() => (u.hidden = true), 6000);
+}
+function doUndo() {
+  const prev = undoStack.pop(); if (!prev) return;
+  S = migrate(JSON.parse(prev)); Store.save(S); render();
+  if (!$("#sheet").hidden) closeSheet();
+  $("#undo").hidden = !undoStack.length;
+  toast("Undone");
 }
 
 document.addEventListener("click", (e) => {
@@ -928,7 +1357,12 @@ document.addEventListener("click", (e) => {
   const b = e.target.closest("[data-a]");
   if (!b) return;
   const fn = actions[b.dataset.a];
-  if (fn) { if (ui.confirm && !["discard", "reset", "sess-del"].includes(b.dataset.a)) ui.confirm = null; fn(b); }
+  if (!fn) return;
+  if (ui.confirm && !["discard", "reset", "sess-del", "reset-day", "week-shuffle", "gh-restore"].includes(b.dataset.a)) ui.confirm = null;
+  if (b.dataset.a === "undo") return fn(b);
+  const before = JSON.stringify(S);
+  fn(b);
+  afterMutation(before);
 });
 
 // ================= backup =================
@@ -952,9 +1386,91 @@ function importBackup(f) {
   r.readAsText(f);
 }
 
+
+// ================= GitHub backup =================
+// Writes data/days/YYYY-MM-DD.json (one per day: that day's log + workouts) and data/state.json
+// (everything, for restore) into a private repo through the GitHub contents API.
+const GH = KEY + ".gh", GHM = KEY + ".ghmeta";
+const ghConf = () => { try { return JSON.parse(localStorage.getItem(GH)) || {}; } catch { return {}; } };
+const ghMeta = () => { try { return JSON.parse(localStorage.getItem(GHM)) || { days: {}, sha: {} }; } catch { return { days: {}, sha: {} }; } };
+const ghSaveMeta = (m) => { try { localStorage.setItem(GHM, JSON.stringify(m)); } catch {} };
+function ghSet(f, v) {
+  const c = ghConf();
+  if (f === "token" && v.startsWith("•")) return;
+  c[f] = v; try { localStorage.setItem(GH, JSON.stringify(c)); } catch {}
+  toast(f === "token" ? "Token saved on this phone" : "Repo saved");
+}
+const b64 = (str) => btoa(unescape(encodeURIComponent(str)));
+const unb64 = (str) => decodeURIComponent(escape(atob(str.replace(/\n/g, ""))));
+function hash(str) { let h = 0; for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0; return h; }
+async function ghApi(method, path, body) {
+  const c = ghConf();
+  const res = await fetch(`https://api.github.com/repos/${c.repo}/contents/${path}`, {
+    method, headers: { Authorization: `Bearer ${c.token}`, Accept: "application/vnd.github+json", "Content-Type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok && !(method === "GET" && res.status === 404)) throw new Error(res.status === 401 ? "token rejected (check it hasn't expired)" : res.status === 404 ? "repo not found (check owner/name and token access)" : `GitHub said ${res.status}`);
+  return res.status === 404 ? null : res.json();
+}
+async function ghPut(path, text, meta) {
+  const msg = `Backup ${path}`;
+  try {
+    const r = await ghApi("PUT", path, { message: msg, content: b64(text), sha: meta.sha[path] });
+    meta.sha[path] = r.content.sha;
+  } catch (e) {
+    // Stale or missing sha: fetch the current one and try once more.
+    const cur = await ghApi("GET", path);
+    const r = await ghApi("PUT", path, { message: msg, content: b64(text), sha: cur?.sha });
+    meta.sha[path] = r.content.sha;
+  }
+}
+let ghBusy = false;
+async function ghBackup(manual = false) {
+  const c = ghConf();
+  if (!c.repo || !c.token) { if (manual) toast("Add the repo and token first"); return; }
+  if (ghBusy || !navigator.onLine) { if (manual) toast(navigator.onLine ? "Backup already running" : "You're offline"); return; }
+  const meta = ghMeta();
+  if (!manual && meta.last && Date.now() - meta.last < 15 * 60e3) return;
+  ghBusy = true;
+  if (manual) toast("Backing up…");
+  try {
+    for (const k of Object.keys(S.days).sort()) {
+      const text = JSON.stringify({ date: k, day: S.days[k], workouts: S.workouts.filter((w) => w.date === k) });
+      const h = hash(text);
+      if (meta.days[k] === h) continue;
+      await ghPut(`data/days/${k}.json`, text, meta);
+      meta.days[k] = h;
+      ghSaveMeta(meta);
+    }
+    await ghPut("data/state.json", JSON.stringify(S), meta);
+    meta.last = Date.now(); delete meta.err;
+    ghSaveMeta(meta);
+    if (manual) toast("Backed up to GitHub");
+  } catch (e) {
+    meta.err = e.message; ghSaveMeta(meta);
+    if (manual) toast(`Backup failed: ${e.message}`);
+  } finally { ghBusy = false; if (ui.tab === "plan") render(); }
+}
+async function ghRestore() {
+  const c = ghConf();
+  if (!c.repo || !c.token) return toast("Add the repo and token first");
+  try {
+    toast("Restoring…");
+    const f = await ghApi("GET", "data/state.json");
+    if (!f) return toast("No backup found in that repo");
+    const data = JSON.parse(unb64(f.content));
+    if (!data.plan || !data.days) throw new Error("backup file looks wrong");
+    S = migrate(data); Store.save(S);
+    const meta = ghMeta(); meta.sha["data/state.json"] = f.sha; ghSaveMeta(meta);
+    toast("Restored from GitHub"); render();
+  } catch (e) { toast(`Restore failed: ${e.message}`); }
+}
+
 // ================= boot =================
 if (S.active && activeWorkout()) wakeLock(true);
 render();
+setTimeout(() => ghBackup(false), 4000);
+document.addEventListener("visibilitychange", () => { if (document.hidden) ghBackup(false); });
 // Re-render on the hour boundary so "now" in the schedule moves and the 4am day rollover happens.
 let lastKey = todayKey();
 setInterval(() => {

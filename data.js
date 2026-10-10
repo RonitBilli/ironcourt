@@ -341,7 +341,7 @@ const MEALS = [
   { id: "postgym", time: "13:00", name: "Post-gym shake", options: [
     { name: "Whey in water", detail: "1 scoop", kcal: 120, protein: 24 },
     { name: "Whey in milk", detail: "1 scoop + 250 ml toned milk", kcal: 270, protein: 32 } ] },
-  { id: "lunch", time: "14:00", name: "Lunch", veg: true, options: [
+  { id: "lunch", time: "14:00", name: "Lunch", veg: true, cook: true, options: [
     { name: "Soya chunk curry", detail: "50 g dry soya chunks, 1 katori dal, 2 roti, sabzi, 1 katori curd", kcal: 700, protein: 46 },
     { name: "Paneer tikka / bhurji", detail: "100 g paneer, 1 katori dal, 2 roti, salad, curd. Max 2-3 times a week (saturated fat)", kcal: 790, protein: 40 },
     { name: "Tofu bhurji", detail: "150 g firm tofu, 2 roti, 1 katori dal, salad", kcal: 600, protein: 38 },
@@ -350,7 +350,7 @@ const MEALS = [
     { name: "Banana + hung curd", detail: "1 banana, 150 g hung curd or Greek yogurt", kcal: 250, protein: 14 },
     { name: "Roasted chana + fruit", detail: "40 g roasted chana, 1 apple or banana", kcal: 250, protein: 9 },
     { name: "Sprouts chaat", detail: "1 big katori sprouts, onion, tomato, lemon", kcal: 200, protein: 12 } ] },
-  { id: "dinner", time: "21:00", name: "Dinner", options: [
+  { id: "dinner", time: "21:00", name: "Dinner", cook: true, options: [
     { name: "Chicken tikka / tandoori", detail: "200 g raw chicken breast, big salad or sabzi, 1 roti", kcal: 550, protein: 50 },
     { name: "Prawn masala (dry)", detail: "200 g prawns, 1 tsp oil, sabzi, ½ cup rice", kcal: 520, protein: 44 },
     { name: "Chicken stir-fry", detail: "200 g chicken, lots of veg, 1 tsp oil, 1 roti", kcal: 500, protein: 48 },
