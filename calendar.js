@@ -87,6 +87,8 @@ const Cal = (() => {
       if (!force && c && Date.now() - (c.checked || 0) < 3600e3) return { ok: true, cached: true };
       try {
         const r = await remote();
+        // Link saved before GitHub was set up never reached the repo: send it now.
+        if (!r && saveRemote && force) await saveRemote(u);
         if (!r) { put(CACHE_KEY, { ...(c || { events: [] }), checked: Date.now(), err: "waiting for GitHub to fetch your calendar (about a minute after saving the link)" }); return { ok: false, why: "not fetched yet, try again in a minute" }; }
         put(CACHE_KEY, { at: r.at, events: r.events || [], err: r.err || "", checked: Date.now() });
         return r.err ? { ok: false, why: r.err } : { ok: true };
