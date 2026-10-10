@@ -6,7 +6,7 @@
 const KEY = "ironcourt.v1";
 const Store = {
   load() { try { return JSON.parse(localStorage.getItem(KEY)); } catch { return null; } },
-  save(data) { try { localStorage.setItem(KEY, JSON.stringify(data)); return true; } catch { return false; } },
+  save(data) { const json = JSON.stringify(data); Native.mirror(json); try { localStorage.setItem(KEY, json); return true; } catch { return false; } },
 };
 
 const clone = (o) => JSON.parse(JSON.stringify(o));
@@ -45,6 +45,10 @@ function migrate(s) {
     for (const m of s.plan.meals) if (m.id === "lunch" || m.id === "dinner") m.cook = true;
     s.plan.version = 3;
   }
+  if (s.plan.version < 4) {
+    for (const it of s.plan.schedule) { it.notify ??= true; if (/^wake/i.test(it.title)) it.alarm = true; }
+    s.plan.version = 4;
+  }
   for (const [id, d] of Object.entries(DISHES)) if (!s.plan.dishes[id]) s.plan.dishes[id] = clone(d);
   s.week ??= {};
   for (const [k, d] of Object.entries(s.days)) d.key = k;
@@ -57,6 +61,7 @@ let saveTimer = null;
 function save() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => { if (!Store.save(S)) toast("Couldn't save. Storage may be full or blocked."); }, 150);
+  if (Native.on) { clearTimeout(save.sync); save.sync = setTimeout(() => syncNative(), 4000); }
 }
 window.addEventListener("pagehide", () => Store.save(S));
 document.addEventListener("visibilitychange", () => { if (document.hidden) Store.save(S); });
@@ -145,7 +150,8 @@ function videoHTML(id, demo = false) {
   const q = demo
     ? `autoplay=1&mute=1&loop=1&playlist=${esc(id)}&controls=0&disablekb=1&iv_load_policy=3&playsinline=1&rel=0&modestbranding=1`
     : `playsinline=1&rel=0&modestbranding=1&iv_load_policy=3`;
-  return `<div class="video ${demo ? "demo" : ""}"><iframe src="https://www.youtube.com/embed/${esc(id)}?${q}" title="Exercise video" referrerpolicy="strict-origin-when-cross-origin" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe></div>`;
+  const src = Native.on ? `https://ronitbilli.github.io/ironcourt/yt.html?v=${esc(id)}&demo=${demo ? 1 : 0}` : `https://www.youtube.com/embed/${esc(id)}?${q}`;
+  return `<div class="video ${demo ? "demo" : ""}"><iframe src="${src}" title="Exercise video" referrerpolicy="strict-origin-when-cross-origin" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe></div>`;
 }
 function exVideo(info, key) {
   const full = ui.open[key]?.full;
@@ -269,15 +275,16 @@ function beep() {
       o.start(audio.currentTime + t); o.stop(audio.currentTime + t + 0.2);
     });
   } catch {}
-  try { navigator.vibrate?.([200, 100, 200]); } catch {}
+  Native.haptic("done");
 }
 function startRest(sec) {
   try { audio ??= new (window.AudioContext || window.webkitAudioContext)(); audio.resume?.(); } catch {}
   if (!sec) return;
+  Native.restNotice(sec);
   rest = { end: Date.now() + sec * 1000, fired: false };
   tickRest();
 }
-function stopRest() { rest = null; const b = $("#restbar"); b.hidden = true; b.classList.remove("over"); }
+function stopRest() { if (rest && !rest.fired) Native.restNotice(0); rest = null; const b = $("#restbar"); b.hidden = true; b.classList.remove("over"); }
 function tickRest() {
   const b = $("#restbar");
   if (!rest) { b.hidden = true; return; }
@@ -314,15 +321,17 @@ function ring(pct, size = 120, sw = 11) {
 // ================= TODAY =================
 function renderToday() {
   const k = todayKey(), d = day(k), p = P(), t = totals(d);
-  const sched = [...p.schedule, ...cookReminders(k)].sort((a, b) => mins(a.time) - mins(b.time));
+  const classes = classItems(k);
+  const sched = [...p.schedule.map((it) => ({ ...it, clash: clashWith(it, classes) })), ...cookReminders(k), ...classes].sort((a, b) => mins(a.time) - mins(b.time));
+  const tasks = sched.filter((x) => !x.cls);
   const now = nowMins();
   let nowIdx = -1;
   sched.forEach((it, i) => { if (mins(it.time) <= now) nowIdx = i; });
   const doneW = workoutsOn(k).length > 0;
   const checked = (it) => it.kind === "meal" ? !!d.eaten[it.ref] : it.kind === "gym" ? !!d.checks[it.id] || doneW : it.go && it.go.meal ? !!S.week[weekOf(it.go.k)]?.sent?.[`${it.go.k}.${it.go.meal}`] : !!d.checks[it.id];
-  const nChecked = sched.filter(checked).length;
+  const nChecked = tasks.filter(checked).length;
   const goals = [t.protein >= p.targets.protein, d.water >= p.targets.water];
-  const score = Math.round(((nChecked + goals.filter(Boolean).length) / (sched.length + goals.length)) * 100);
+  const score = Math.round(((nChecked + goals.filter(Boolean).length) / (tasks.length + goals.length)) * 100);
 
   const meter = (label, val, unit, target, pct, extra = "") => `
     <div class="meter"><div class="meter-top"><span class="eyebrow">${label}</span>${ring(pct, 34, 5)}</div>
@@ -349,7 +358,7 @@ function renderToday() {
       <div class="hero-ring">${ring(score, 116, 10)}<div class="ring-txt"><b>${score}</b><span>%</span></div></div>
       <div class="hero-side">
         <span class="eyebrow">Today's score</span>
-        <p class="hero-line"><b>${nChecked}</b> of ${sched.length} done</p>
+        <p class="hero-line"><b>${nChecked}</b> of ${tasks.length} done</p>
         <div class="pills"><span class="pill ${goals[0] ? "on" : ""}">Protein</span><span class="pill ${goals[1] ? "on" : ""}">Water</span><span class="pill ${doneW ? "on" : ""}">Gym</span></div>
       </div>
     </section>
@@ -373,10 +382,11 @@ function renderToday() {
         if (it.kind === "meal") { const slot = p.meals.find((m) => m.id === it.ref); if (slot) { const o = mealOpt(slot, d, k); sub = `${o.veg ? '<i class="veg"></i>' : ""}${esc(o.name)} · ${o.protein} g protein`; } }
         if (it.sub) sub = esc(it.sub);
         if (it.kind === "gym") sub = aw ? "In progress" : doneW ? "Logged" : sid === "REST" ? "Rest day in rotation" : esc(se?.name || "");
-        return `<div class="tl ${i === nowIdx ? "now" : ""} ${on ? "done" : ""}">
+        if (it.clash) sub = `<b class="warn-text">Clashes with ${esc(it.clash)}</b>${sub ? " · " + sub : ""}`;
+        return `<div class="tl ${i === nowIdx ? "now" : ""} ${on ? "done" : ""} ${it.cls ? "cls" : ""}">
           <span class="t">${fmtTime(it.time)}</span><span class="dot k-${it.kind}"></span>
           <div class="what" ${it.go ? `data-a="tl-go" data-id="${it.id}" role="button" tabindex="0"` : ""}><b>${esc(it.title)}${it.go ? " ›" : ""}</b>${sub ? `<span>${sub}</span>` : ""}</div>
-          <button class="check ${on ? "on" : ""}" data-a="${it.dyn ? "dcheck" : "tcheck"}" data-id="${it.id}" aria-label="Mark ${esc(it.title)} done"></button></div>`;
+          ${it.cls ? `<span class="chip">Class</span>` : `<button class="check ${on ? "on" : ""}" data-a="${it.dyn ? "dcheck" : "tcheck"}" data-id="${it.id}" aria-label="Mark ${esc(it.title)} done"></button>`}</div>`;
       }).join("")}
     </div></section>
 
@@ -417,6 +427,52 @@ function cookReminders(k) {
   if (dow === 0) out.push({ id: "dyn-groc", dyn: true, time: "11:00", title: "Order groceries for the week", kind: "cook", go: { groc: true } });
   if (dow === 3 && groceries(weekOf(k)).mid.length) out.push({ id: "dyn-chk", dyn: true, time: "18:00", title: "Order chicken for Thu-Sat", kind: "cook", go: { groc: true } });
   return out;
+}
+
+
+// ---------- Outlook classes on the timeline ----------
+const hhmm = (ms) => { const d = new Date(ms); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+function classItems(k) {
+  return Cal.eventsOn(k).map((e) => ({ id: "cls" + e.s, cls: true, dyn: true, kind: "class", time: hhmm(e.s), title: e.t, sub: `till ${fmtTime(hhmm(e.e))}${e.w ? " · " + e.w : ""}`, s: e.s, e: e.e }));
+}
+// Gym is about 75 minutes, squash about 60. Anything in the schedule that overlaps a class is flagged.
+function clashWith(it, classes) {
+  if (!classes.length || !["gym", "squash"].includes(it.kind)) return "";
+  const len = it.kind === "gym" ? 75 : 60;
+  const base = classes[0] ? new Date(classes[0].s) : new Date();
+  const [h, m] = it.time.split(":").map(Number);
+  const a = new Date(base); a.setHours(h, m, 0, 0);
+  const b = a.getTime() + len * 60e3;
+  const hit = classes.find((c) => c.s < b && c.e > a.getTime());
+  return hit ? `${hit.title} (${fmtTime(hhmm(hit.s))})` : "";
+}
+
+// ---------- phone sync: reminders + alarms ----------
+function reminderPlan() {
+  const out = [], t = todayKey();
+  for (let i = 0; i < 3; i++) {
+    const k = addDays(t, i), d = S.days[k];
+    for (const it of [...P().schedule, ...cookReminders(k)]) {
+      if (it.notify === false) continue;
+      if (i === 0 && d && (d.checks?.[it.id] || (it.kind === "meal" && d.eaten?.[it.ref]))) continue;
+      const [h, m] = it.time.split(":").map(Number);
+      const at = parseKey(k); if (h < 4) at.setDate(at.getDate() + 1); at.setHours(h, m, 0, 0);
+      let body = it.sub || "";
+      if (it.kind === "meal") { const slot = P().meals.find((x) => x.id === it.ref); if (slot) body = mealOpt(slot, d || { choice: {}, key: k }, k).name; }
+      if (it.kind === "gym") { const sid = currentSessionId(); body = sid === "REST" ? "Rest day in the rotation" : P().sessions[sid]?.name || ""; }
+      out.push({ key: `${k}|${it.id}`, at, title: it.title, body });
+    }
+  }
+  return out;
+}
+async function syncNative(manual = false) {
+  if (!Native.on) { if (manual) toast("Reminders and alarms work in the iPhone app"); return; }
+  const r = await Native.syncReminders(reminderPlan());
+  const alarms = P().schedule.filter((x) => x.alarm).map((x) => { const [h, m] = x.time.split(":").map(Number); return { key: x.id, hour: h, minute: m, label: x.title }; });
+  const a = await Native.syncAlarms(alarms);
+  ui.phone = { at: Date.now(), r, a };
+  if (manual) toast(r.ok ? `${r.count} reminders set${a.ok ? `, ${a.count} alarms` : ""}` : `Couldn't set reminders: ${r.why}`);
+  if (ui.tab === "plan") render();
 }
 
 // ---------- party ----------
@@ -983,7 +1039,7 @@ function renderProgress() {
 }
 function weekSummary() {
   const k = todayKey(), st = weekStats(k), ws = weightSeries(), p = P();
-  const lines = [`Ironcourt week ending ${fmtDay(k)} (${p.mode} mode)`];
+  const lines = [`Infinity week ending ${fmtDay(k)} (${p.mode} mode)`];
   const last = ws[ws.length - 1], ago = ws.filter((s) => diffDays(k, s.k) >= 7).pop();
   if (last) lines.push(`Weight 7-day avg: ${last.avg.toFixed(1)} kg${ago ? ` (week ago ${ago.avg.toFixed(1)})` : ""}`);
   lines.push(`Workouts: ${st.sessions}. Protein target hit: ${st.protDays}/7 days (avg ${st.prot ? st.prot.toFixed(0) : "–"} g). Drinks: ${st.drinks}. Avg sleep: ${st.sleep ? st.sleep.toFixed(1) : "–"} h. Avg steps: ${st.steps ? Math.round(st.steps) : "–"}.`);
@@ -1037,7 +1093,9 @@ function renderPlan() {
   const schedule = [...p.schedule].map((it) => ({ it, i: p.schedule.indexOf(it) })).sort((a, b) => mins(a.it.time) - mins(b.it.time)).map(({ it, i }) => `
     <div class="edit-row"><div class="row">${inp(`plan.schedule.${i}.time`, it.time, "time", 'style="max-width:120px" data-rerender="1"')}${inp(`plan.schedule.${i}.title`, it.title)}<button class="icon-btn" data-a="sched-del" data-i="${i}" aria-label="Delete">✕</button></div>
       <div class="row"><select id="f-kind-${i}" data-bind="plan.schedule.${i}.kind" data-type="str" data-rerender="1">${["habit", "meal", "gym", "squash"].map((k) => `<option ${k === it.kind ? "selected" : ""}>${k}</option>`).join("")}</select>
-      ${it.kind === "meal" ? `<select id="f-ref-${i}" data-bind="plan.schedule.${i}.ref" data-type="str">${p.meals.map((m) => `<option value="${m.id}" ${m.id === it.ref ? "selected" : ""}>${esc(m.name)}</option>`).join("")}</select>` : ""}</div></div>`).join("")
+      ${it.kind === "meal" ? `<select id="f-ref-${i}" data-bind="plan.schedule.${i}.ref" data-type="str">${p.meals.map((m) => `<option value="${m.id}" ${m.id === it.ref ? "selected" : ""}>${esc(m.name)}</option>`).join("")}</select>` : ""}</div>
+      <div class="row small"><label class="row"><input type="checkbox" id="f-nt-${i}" style="width:auto" ${it.notify !== false ? "checked" : ""} data-bind="plan.schedule.${i}.notify" data-type="bool"> Reminder</label>
+        <label class="row"><input type="checkbox" id="f-al-${i}" style="width:auto" ${it.alarm ? "checked" : ""} data-bind="plan.schedule.${i}.alarm" data-type="bool"> Real alarm</label></div></div>`).join("")
     + `<button class="btn" data-a="sched-add">+ Add item</button>`;
 
   const rot = rotation();
@@ -1090,6 +1148,31 @@ function renderPlan() {
     <div class="field"><label>Sunday: order</label>${lines("plan.sundayGuide.order", p.sundayGuide.order)}</div>
     <div class="field"><label>Sunday: skip</label>${lines("plan.sundayGuide.avoid", p.sundayGuide.avoid)}</div>`;
 
+  const ph = ui.phone, cs = Cal.status();
+  const phone = `<p class="small">${Native.on ? "<b>Running as the iPhone app.</b>" : "<b>You're on the website.</b> Reminders, alarms and full offline work in the iPhone app."}</p>
+    <span class="eyebrow">Reminders</span>
+    <p class="small muted">Every schedule item rings at its time, plus cook messages, soaking pulses and grocery orders. Turn single items off in Daily schedule. They're set 3 days ahead and refresh whenever you open the app.</p>
+    <span class="eyebrow">Real alarms (iOS 26)</span>
+    <p class="small muted">Items ticked "Real alarm" in Daily schedule ring like the Clock app, even on silent. Each alarm is set for its next time and re-armed when you open Infinity, so open it at least once a day.</p>
+    ${ph ? `<p class="small">Last sync: ${ph.r.ok ? `${ph.r.count} reminders` : "reminders failed (" + esc(ph.r.why) + ")"} · ${ph.a.ok ? `${ph.a.count} alarms` : "alarms: " + esc(ph.a.why)}</p>` : ""}
+    <button class="btn" data-a="phone-sync">Set reminders and alarms now</button>
+    <span class="eyebrow">Steps and sleep from Apple Health</span>
+    <p class="small muted">A free Apple ID can't give apps Health access, so an iPhone Shortcut passes the numbers in. Make one automation (steps below) and it fills Steps and Sleep every night.</p>
+    <ol class="small steps">
+      <li>Shortcuts app → Automation → New → Time of Day → 11:30 pm, Daily, Run Immediately.</li>
+      <li>Add action <b>Find Health Samples</b>: Steps, Start Date is Today. Add <b>Calculate Statistics</b>: Sum.</li>
+      <li>Add <b>Find Health Samples</b>: Sleep Analysis, Start Date in the last 1 day. Add <b>Calculate Statistics</b>: Sum (it gives hours or minutes; set the unit to Hours).</li>
+      <li>Add <b>Open URLs</b> with: <code>infinity://health?steps=</code>[Steps sum]<code>&amp;sleep=</code>[Sleep sum]</li>
+    </ol>`;
+  const classes = `<p class="small muted">Shows your Outlook classes on Today and warns when gym or squash clashes. Uses your calendar's published link; nothing to install.</p>
+    <ol class="small steps">
+      <li>On a laptop, open Outlook on the web (outlook.office.com) → Settings → Calendar → Shared calendars.</li>
+      <li>Under <b>Publish a calendar</b>, pick your calendar, choose <b>Can view all details</b>, tap Publish.</li>
+      <li>Copy the <b>ICS</b> link and paste it below. If ISB has publishing switched off, tell Claude and we'll use the iPhone Calendar route instead.</li>
+    </ol>
+    <div class="field"><label for="icsUrl">Calendar ICS link</label><input id="icsUrl" type="url" value="${esc(cs.url)}" data-a-change="ics" placeholder="https://outlook.office365.com/owa/calendar/…/calendar.ics" autocomplete="off"></div>
+    <p class="small ${cs.err ? "" : "muted"}">${cs.err ? `<b>Couldn't load:</b> ${esc(cs.err)}` : cs.at ? `${cs.n} events loaded ${new Date(cs.at).toLocaleString("en-IN")}` : "Not loaded yet."}</p>
+    <button class="btn" data-a="ics-refresh">Refresh classes</button>`;
   const gh = ghConf(), meta = ghMeta();
   const backup = `<span class="eyebrow">GitHub backup (automatic)</span>
     <p class="small muted">Saves one small file per day to a <b>private</b> GitHub repo, plus a full copy for restoring. Runs when the app opens or closes, at most every 15 minutes. The token stays on this phone and never goes into the backup.</p>
@@ -1112,8 +1195,10 @@ function renderPlan() {
     ${sec("meals", "Meals", meals, "Options you can switch between each day")}
     ${sec("diet", "Household and cook", diet, `${esc(h.me || "You")} + ${esc(h.partner || "partner")} · ${h.nonveg} non-veg dinners a week`)}
     ${sec("party", "Party days", party, `${p.partyDates.length} dates`)}
+    ${sec("phone", "Phone: reminders, alarms, Health", phone, Native.on ? "iPhone app" : "Website")}
+    ${sec("classes", "Classes (Outlook)", classes, cs.url ? `${cs.n} events` : "Not connected")}
     ${sec("backup", "Backup", backup)}
-    <p class="small muted" style="text-align:center">Ironcourt · data stays on this phone, plus your own GitHub backup if you set one up</p>`;
+    <p class="small muted" style="text-align:center">Infinity · data stays on this phone, plus your own GitHub backup if you set one up</p>`;
 }
 
 // ================= render =================
@@ -1157,6 +1242,7 @@ function onChange(e) {
     save(); render(); return openMealSheet();
   }
   if (el.dataset.aChange === "gh") { ghSet(el.dataset.f, el.value.trim()); return render(); }
+  if (el.dataset.aChange === "ics") { Cal.setUrl(el.value); Cal.refresh(true).then((r) => { toast(r.ok ? "Classes loaded" : `Couldn't load: ${r.why}`); render(); }); return; }
   if (el.dataset.aChange === "sess-pick") { ui.editSession = el.value; ui.confirm = null; return render(); }
   if (el.dataset.aChange === "ex-video") { const id = ytId(el.value); if (!id && el.value.trim()) { toast("That doesn't look like a YouTube link"); return; } P().exercises[ui.editEx][el.dataset.f || "video"] = id; save(); return render(); }
   const path = el.dataset.bind;
@@ -1196,6 +1282,7 @@ const actions = {
     const rIn = document.getElementById(`r-${b.dataset.i}-${b.dataset.j}`), wIn = document.getElementById(`w-${b.dataset.i}-${b.dataset.j}`);
     if (rIn) s.r = rIn.value; if (wIn) s.w = wIn.value;
     s.done = !s.done;
+    if (s.done) Native.haptic("tap");
     if (s.done && !s.r) s.r = String(topRep(it.reps) ?? "");
     if (s.done) { const nxt = it.sets[+b.dataset.j + 1]; if (nxt && !nxt.w && s.w) nxt.w = s.w; startRest(it.rest); }
     save(); render();
@@ -1278,6 +1365,8 @@ const actions = {
     ui.confirm = null; ghRestore();
   },
   undo: () => doUndo(),
+  "phone-sync": () => syncNative(true),
+  "ics-refresh": async () => { toast("Loading classes…"); const r = await Cal.refresh(true); toast(r.ok ? "Classes updated" : `Couldn't load: ${r.why}`); render(); },
   "party-toggle": () => { const d = day(); d.party = !isParty(); save(); render(); },
   eat: (b) => { const d = day(); d.eaten[b.dataset.id] = !d.eaten[b.dataset.id]; save(); render(); },
   choose: (b) => { const d = day(); d.choice[b.dataset.id] = +b.dataset.i; save(); render(); },
@@ -1369,7 +1458,7 @@ document.addEventListener("click", (e) => {
 async function exportBackup() {
   Store.save(S);
   const json = JSON.stringify(S, null, 1);
-  const name = `ironcourt-backup-${todayKey()}.json`;
+  const name = `infinity-backup-${todayKey()}.json`;
   const file = new File([json], name, { type: "application/json" });
   if (navigator.canShare?.({ files: [file] })) { try { await navigator.share({ files: [file], title: name }); return; } catch (e) { if (e.name === "AbortError") return; } }
   const a = document.createElement("a");
@@ -1381,7 +1470,7 @@ function importBackup(f) {
   const r = new FileReader();
   r.onload = () => {
     try { const data = JSON.parse(r.result); if (!data.plan || !data.days) throw 0; S = migrate(data); save(); toast("Backup restored"); render(); }
-    catch { toast("That file isn't an Ironcourt backup"); }
+    catch { toast("That file isn't an Infinity backup"); }
   };
   r.readAsText(f);
 }
@@ -1469,6 +1558,26 @@ async function ghRestore() {
 // ================= boot =================
 if (S.active && activeWorkout()) wakeLock(true);
 render();
+(async () => {
+  if (Native.on && !Store.load()) {
+    const m = await Native.loadMirror();
+    if (m && m.plan) { S = migrate(m); Store.save(S); render(); toast("Data restored from the phone's copy"); }
+  }
+  Native.listen({
+    onUrl: (u) => {
+      if (u.host === "health" || u.pathname.includes("health")) {
+        const d = day(), st = parseFloat(u.searchParams.get("steps")), sl = parseFloat(u.searchParams.get("sleep"));
+        if (!isNaN(st)) d.steps = Math.round(st);
+        if (!isNaN(sl)) d.sleep = Math.round((sl > 24 ? sl / 60 : sl) * 10) / 10;
+        save(); render(); toast("Steps and sleep updated from Health");
+      }
+    },
+    onResume: () => { Cal.refresh(); syncNative(); render(); },
+  });
+  await Cal.refresh();
+  render();
+  syncNative();
+})();
 setTimeout(() => ghBackup(false), 4000);
 document.addEventListener("visibilitychange", () => { if (document.hidden) ghBackup(false); });
 // Re-render on the hour boundary so "now" in the schedule moves and the 4am day rollover happens.

@@ -1,0 +1,14 @@
+{
+  "appId": "com.ronitbilli.infinity",
+  "appName": "Infinity",
+  "webDir": "www",
+  "backgroundColor": "#0B0F0E",
+  "ios": {
+    "contentInset": "never",
+    "allowsLinkPreview": false
+  },
+  "plugins": {
+    "CapacitorHttp": { "enabled": true },
+    "LocalNotifications": { "presentationOptions": ["badge", "sound", "banner", "list"] }
+  }
+}

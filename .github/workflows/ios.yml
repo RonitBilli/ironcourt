@@ -1,0 +1,54 @@
+# Builds an unsigned Infinity.ipa on every push to main and publishes it as the
+# latest GitHub release. Install it with SideStore, which signs it with your Apple ID.
+name: Build iPhone app
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: ios-build
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Create Capacitor project
+        run: |
+          mkdir -p native/www
+          rsync -a --exclude native --exclude native-src --exclude .github --exclude .git --exclude README.md ./ native/www/
+          cp native-src/package.json native-src/capacitor.config.json native/
+          cd native
+          npm install --no-audit --no-fund
+          npx cap add ios 2>&1 | tee "$RUNNER_TEMP/cap.log" || { tail -20 "$RUNNER_TEMP/cap.log" | while read -r l; do echo "::error::$l"; done; exit 1; }
+          npx cap sync ios
+      - name: Configure iOS project
+        run: bash native-src/configure-ios.sh
+      - name: Build (unsigned)
+        run: |
+          set -o pipefail
+          cd native/ios/App
+          if [ -d App.xcworkspace ]; then TARGET="-workspace App.xcworkspace"; else TARGET="-project App.xcodeproj"; fi
+          xcodebuild $TARGET -scheme App -configuration Release -sdk iphoneos \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/App.xcarchive" archive \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            MARKETING_VERSION="1.0.${{ github.run_number }}" CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
+            > "$RUNNER_TEMP/xcodebuild.log" 2>&1 || { grep -E "error:" "$RUNNER_TEMP/xcodebuild.log" | sort -u | head -15 | while read -r l; do echo "::error::$l"; done; tail -n 80 "$RUNNER_TEMP/xcodebuild.log"; exit 1; }
+          tail -n 5 "$RUNNER_TEMP/xcodebuild.log"
+          test -d "$RUNNER_TEMP/App.xcarchive/Products/Applications/App.app"
+          mkdir -p "$RUNNER_TEMP/Payload"
+          cp -R "$RUNNER_TEMP/App.xcarchive/Products/Applications/App.app" "$RUNNER_TEMP/Payload/"
+          cd "$RUNNER_TEMP" && zip -qry Infinity.ipa Payload && ls -la Infinity.ipa
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Infinity 1.0.${{ github.run_number }}
+          body: "Install with SideStore. Commit ${{ github.sha }}"
+          files: ${{ runner.temp }}/Infinity.ipa
+          make_latest: true
