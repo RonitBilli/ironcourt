@@ -13,7 +13,7 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
 const uid = () => Math.random().toString(36).slice(2, 9);
 
 function freshState() {
-  return { plan: clone(DEFAULT_PLAN), days: {}, workouts: [], active: null, rot: { cut: 0, term: 0 }, swaps: {}, week: {} };
+  return { plan: clone(DEFAULT_PLAN), days: {}, workouts: [], active: null, rot: { cut: 0, term: 0, glute: 0 }, swaps: {}, week: {} };
 }
 
 function migrate(s) {
@@ -45,9 +45,21 @@ function migrate(s) {
     for (const m of s.plan.meals) if (m.id === "lunch" || m.id === "dinner") m.cook = true;
     s.plan.version = 3;
   }
+  // v5: glutes program, per-person phones, schedule clean-up (alarm switches were on for
+  // breakfast and coffee by mistake; only wake-up should be a real alarm).
+  if (s.plan.version >= 4 && s.plan.version < 5) {
+    for (const it of s.plan.schedule) if (it.alarm && !/^wake/i.test(it.title)) it.alarm = false;
+  }
   if (s.plan.version < 4) {
     for (const it of s.plan.schedule) { it.notify ??= true; if (/^wake/i.test(it.title)) it.alarm = true; }
     s.plan.version = 4;
+  }
+  if (s.plan.version < 5) {
+    s.plan.rotations.glute ??= clone(DEFAULT_PLAN.rotations.glute);
+    for (const id of ["GA", "UA", "GB", "UB", "GOPT"]) s.plan.sessions[id] ??= clone(SESSIONS[id]);
+    s.plan.household.iam ??= "nonveg";
+    s.rot.glute ??= 0;
+    s.plan.version = 5;
   }
   for (const [id, d] of Object.entries(DISHES)) if (!s.plan.dishes[id]) s.plan.dishes[id] = clone(d);
   s.week ??= {};
@@ -86,11 +98,13 @@ const P = () => S.plan;
 const exInfo = (id) => P().exercises[id] || { name: id, muscle: "", video: "", cues: [], alts: [] };
 const ALCOHOL = /beer|whisky|rum|vodka|gin|wine|peg|alcohol|cocktail/i;
 
-function day(k = todayKey()) {
+// The day being viewed and logged. Today unless picked on the Today tab.
+const curKey = () => (ui.viewDay && ui.viewDay !== todayKey() ? ui.viewDay : todayKey());
+function day(k = curKey()) {
   if (!S.days[k]) S.days[k] = { key: k, checks: {}, water: 0, eaten: {}, choice: {}, extra: [], partyChecks: {} };
   return S.days[k];
 }
-function isParty(k = todayKey()) {
+function isParty(k = curKey()) {
   const d = S.days[k];
   if (d && d.party !== undefined) return d.party;
   return P().partyDates.includes(k);
@@ -99,7 +113,11 @@ function isParty(k = todayKey()) {
 function mealOpt(slot, d, k = d.key) {
   if (slot.cook && k && k >= (H().since || "")) {
     const e = mealEntry(k, slot.id);
-    if (e && !e.off) { const dd = DISH(e.dish), m = myPlate(e, slot.id); return { name: dd.name, detail: addonSummary(e), kcal: m.kcal, protein: m.p, veg: dd.diet !== "nonveg", fromCook: true }; }
+    if (e && !e.off) {
+      const dd = DISH(e.dish), m = myPlate(e, slot.id), vegNight = iAmVeg() && dd.diet === "nonveg";
+      const name = vegNight ? (PAIRS[e.pair]?.label || "Dal chawal") + (e.pair === "leftover" && e.x ? `: ${e.x}` : "") : dd.name;
+      return { name, detail: addonSummary(e), kcal: m.kcal, protein: m.p, veg: vegNight || dd.diet !== "nonveg", fromCook: true };
+    }
   }
   const i = d.choice[slot.id] ?? 0;
   return { ...(slot.options[i] || slot.options[0]), veg: !!slot.veg };
@@ -219,7 +237,7 @@ function startWorkout(sid) {
   const se = P().sessions[sid];
   if (!se) return;
   const w = {
-    id: uid(), date: todayKey(), session: sid, start: Date.now(), done: false,
+    id: uid(), date: curKey(), session: sid, start: Date.now(), done: false,
     items: se.items.map((it) => {
       const ex = S.swaps[it.ex] || it.ex;
       const last = lastLog(ex);
@@ -300,15 +318,19 @@ setInterval(() => { if (rest) tickRest(); }, 250);
 
 // ================= header =================
 function renderTop() {
-  const k = todayKey(), p = P();
+  const k = curKey(), p = P(), past = k !== todayKey();
   const total = diffDays(p.cutEnd, p.cutStart) + 1, n = diffDays(k, p.cutStart) + 1;
   let phase;
   if (p.mode === "term") phase = "Term mode";
+  else if (p.mode === "glute") phase = "Glutes & legs program";
   else if (n < 1) phase = `Cut starts in ${1 - n} day${n === 0 ? "" : "s"}`;
   else if (n > total) phase = "Cut complete";
   else phase = `Cut · day ${n} of ${total}`;
   const titles = { today: fmtDay(k), train: "Train", food: "Food", progress: "Progress", plan: "Plan" };
-  $("#top").innerHTML = `<div class="top-inner"><div class="grow"><div class="kicker">${esc(ui.tab === "today" ? phase : fmtDay(k))}</div><h1>${esc(titles[ui.tab])}</h1></div>${isParty(k) ? `<span class="chip warn">Party day</span>` : ""}</div>`;
+  const picker = ui.tab === "today" || ui.tab === "food"
+    ? `<div class="daynav"><button class="icon-btn" data-a="day-step" data-v="-1" aria-label="Previous day">‹</button><label class="daypick">${ui.tab === "today" ? "" : "Day"}<input type="date" id="dayPick" value="${k}" max="${todayKey()}" data-a-change="day-pick" aria-label="Pick a day"></label><button class="icon-btn" data-a="day-step" data-v="1" aria-label="Next day" ${past ? "" : "disabled"}>›</button></div>` : "";
+  $("#top").innerHTML = `<div class="top-inner"><div class="grow"><div class="kicker">${esc(ui.tab === "today" ? (past ? "Editing a past day" : phase) : fmtDay(k))}</div><h1>${esc(titles[ui.tab])}</h1></div>${isParty(k) ? `<span class="chip warn">Party day</span>` : ""}${picker}</div>
+    ${past && (ui.tab === "today" || ui.tab === "food") ? `<div class="top-inner pastbar"><span class="small">Logging for <b>${esc(fmtDay(k))}</b></span><button class="btn small primary" data-a="day-today">Back to today</button></div>` : ""}`;
 }
 
 function ring(pct, size = 120, sw = 11) {
@@ -320,7 +342,7 @@ function ring(pct, size = 120, sw = 11) {
 
 // ================= TODAY =================
 function renderToday() {
-  const k = todayKey(), d = day(k), p = P(), t = totals(d);
+  const k = curKey(), d = day(k), p = P(), t = totals(d);
   const classes = classItems(k);
   const items = p.schedule.map((it) => ({ ...it, time: d.moved?.[it.id] || it.time, moved: !!d.moved?.[it.id] }));
   const sched = [...items.map((it) => ({ ...it, clash: clashWith(it, classes) })), ...cookReminders(k), ...classes].sort((a, b) => mins(a.time) - mins(b.time));
@@ -361,7 +383,7 @@ function renderToday() {
     <section class="hero">
       <div class="hero-ring">${ring(score, 116, 10)}<div class="ring-txt"><b>${score}</b><span>%</span></div></div>
       <div class="hero-side">
-        <span class="eyebrow">Today's score</span>
+        <span class="eyebrow">${k === todayKey() ? "Today's score" : "Day's score"}</span>
         <p class="hero-line"><b>${nChecked}</b> of ${tasks.length} done</p>
         <div class="pills"><span class="pill ${goals[0] ? "on" : ""}">Protein</span><span class="pill ${goals[1] ? "on" : ""}">Water</span><span class="pill ${doneW ? "on" : ""}">Gym</span></div>
       </div>
@@ -713,9 +735,12 @@ function weekFor(k) {
 function mealEntry(k, meal) { if (!isCookDay(k)) return null; return weekFor(k)?.days[k]?.[meal] || null; }
 
 // My plate: main portion + my share of the add-ons.
+const VEG_PLATE = { split: { kcal: 320, p: 18 }, splitveg: { kcal: 200, p: 5 }, dalchawal: { kcal: 380, p: 13 }, leftover: { kcal: 450, p: 12 }, tikka: { kcal: 300, p: 19 }, biryani: { kcal: 520, p: 15 }, patty: { kcal: 450, p: 14 }, built: { kcal: 330, p: 18 } };
+const iAmVeg = () => H().iam === "veg";
 function myPlate(e, meal) {
   const d = DISH(e.dish); if (!d) return { kcal: 0, p: 0 };
-  let kcal = d.me.kcal, p = d.me.p;
+  const vp = iAmVeg() && d.diet === "nonveg" ? VEG_PLATE[e.pair] || VEG_PLATE.dalchawal : null;
+  let kcal = vp ? vp.kcal : d.me.kcal, p = vp ? vp.p : d.me.p;
   const myB = Math.min(e.n, +H().myBread?.[meal] || 2);
   if (e.b && ADDONS.b[e.b]) { kcal += myB * ADDONS.b[e.b].kcal; p += myB * ADDONS.b[e.b].p; }
   if (e.dal && ADDONS.dal[e.dal]) { kcal += ADDONS.dal[e.dal].kcal; p += ADDONS.dal[e.dal].p; }
@@ -739,7 +764,7 @@ function cookMsgs(k, meal) {
   const mealHi = meal === "lunch" ? "lunch" : "dinner";
   if (!e) return null;
   if (e.off) return e.missed ? ["", ""] : [`${cook} ${when} ${mealHi} nahi banana hai, hum bahar khaayenge. Aap ${mealHi} ke liye mat aana.`, ""];
-  const d = DISH(e.dish), me = h.me ? `${h.me} ke liye` : "Mere liye", pn = h.partner || "partner";
+  const d = DISH(e.dish), me = h.me ? `${h.me} ke liye` : iAmVeg() ? "Non-veg wale ke liye" : "Mere liye", pn = h.partner || "veg wale";
   const add = [], care = [];
   if (e.b && e.n) add.push(ADDONS.b[e.b].hi(e.n));
   if (e.dal) add.push(ADDONS.dal[e.dal].hi);
@@ -843,18 +868,19 @@ function groceryText(g) {
 
 // ---------- Food tab ----------
 function renderFood() {
-  const k = todayKey(), d = day(k), p = P(), t = totals(d), h = H();
+  const k = curKey(), d = day(k), p = P(), t = totals(d), h = H();
   ui.cookSel ??= dueMeal();
   const isSunday = parseKey(k).getDay() === 0;
   const setup = !h.partner ? `<section class="card week1"><b>Who's eating?</b><p class="small">Names go into the cook messages ("[name] ke liye…"). They stay on this phone.</p>
-    <div class="grid2"><div class="field"><label for="hMe">You (non-veg)</label><input id="hMe" type="text" value="${esc(h.me)}" data-bind="plan.household.me" data-type="str" placeholder="Your name"></div>
-    <div class="field"><label for="hP">Partner (veg)</label><input id="hP" type="text" value="${esc(h.partner)}" data-bind="plan.household.partner" data-type="str" data-rerender="1" placeholder="Partner's name"></div></div></section>` : "";
+    <div class="grid2"><div class="field"><label for="hMe">Non-veg person</label><input id="hMe" type="text" value="${esc(h.me)}" data-bind="plan.household.me" data-type="str" placeholder="Your name"></div>
+    <div class="field"><label for="hP">Veg person</label><input id="hP" type="text" value="${esc(h.partner)}" data-bind="plan.household.partner" data-type="str" data-rerender="1" placeholder="Partner's name"></div></div></section>` : "";
   return `
     <div class="meters">
       <div class="meter"><div class="meter-top"><span class="eyebrow">Protein</span>${ring((t.protein / p.targets.protein) * 100, 34, 5)}</div><div class="val">${t.protein}<small> / ${p.targets.protein} g</small></div></div>
       <div class="meter"><div class="meter-top"><span class="eyebrow">Calories</span>${ring((t.kcal / p.targets.kcal) * 100, 34, 5)}</div><div class="val">${t.kcal}<small> / ${p.targets.kcal}</small></div></div>
     </div>
     ${setup}
+    ${proteinGap(k, d)}
     ${cookCard()}
     <section class="card"><h2>My meals today</h2>
       ${p.meals.map((slot) => {
@@ -882,6 +908,17 @@ function renderFood() {
     ${isSunday ? sundayCard() : ""}`;
 }
 
+// If today's planned meals land short of the protein target, say what closes the gap.
+function proteinGap(k, d) {
+  const p = P();
+  let planned = 0;
+  for (const slot of p.meals) planned += +mealOpt(slot, d, k).protein || 0;
+  for (const x of d.extra) planned += (+x.protein || 0) * (x.qty || 1);
+  const gap = Math.round(p.targets.protein - planned);
+  if (gap <= 8) return "";
+  const fixes = [["1 scoop whey", 24], ["150 g hung curd / Greek yogurt", 15], ["2 egg whites + 1 egg", 13], ["100 g paneer or tofu at lunch", 16], ["1 katori sprouts or roasted chana", 8]];
+  return `<section class="hint warn">Today's plan reaches about <b>${planned} g</b> protein, ${gap} g short of ${p.targets.protein} g. Easiest fixes: ${fixes.slice(0, 3).map(([n, g]) => `${n} (+${g} g)`).join(", ")}.</section>`;
+}
 function cookCard() {
   const sel = ui.cookSel, t = todayKey(), tm = addDays(t, 1);
   const choices = [[t, "lunch", "Today lunch"], [t, "dinner", "Today dinner"], [tm, "lunch", "Tomorrow lunch"], [tm, "dinner", "Tomorrow dinner"]];
@@ -1103,8 +1140,8 @@ function renderPlan() {
   ui.editSession ??= sessIds[0];
   const es = p.sessions[ui.editSession];
 
-  const mode = `<div class="seg"><button class="${p.mode === "cut" ? "on" : ""}" data-a="mode" data-v="cut">Cut (4-5 days)</button><button class="${p.mode === "term" ? "on" : ""}" data-a="mode" data-v="term">Term (3 days)</button></div>
-    <p class="small muted">Term mode switches the rotation to 3 full-body sessions for when classes start.</p>
+  const mode = `<div class="seg wrap"><button class="${p.mode === "cut" ? "on" : ""}" data-a="mode" data-v="cut">Cut (4-5 days)</button><button class="${p.mode === "term" ? "on" : ""}" data-a="mode" data-v="term">Term (3 days)</button><button class="${p.mode === "glute" ? "on" : ""}" data-a="mode" data-v="glute">Glutes & legs</button></div>
+    <p class="small muted">Cut and Term are the upper/lower and full-body programs. <b>Glutes & legs</b> is the 4-day program for Yashvi: glute-led lifts (hip thrust, RDL, lunges, abduction), moderate thigh work, two upper-body days, and an optional walk day.</p>
     <div class="grid2"><div class="field"><label>Cut starts</label>${inp("plan.cutStart", p.cutStart, "date", 'data-rerender="1"')}</div><div class="field"><label>Cut ends</label>${inp("plan.cutEnd", p.cutEnd, "date", 'data-rerender="1"')}</div></div>`;
 
   const targets = `<div class="grid2">
@@ -1166,7 +1203,9 @@ function renderPlan() {
     <div class="field"><label>Party rules, one per line</label>${lines("plan.partyRules", p.partyRules)}</div>`;
 
   const h = p.household;
-  const diet = `<div class="grid2"><div class="field"><label>Your name (non-veg)</label>${inp("plan.household.me", h.me)}</div><div class="field"><label>Partner (veg)</label>${inp("plan.household.partner", h.partner)}</div></div>
+  const diet = `<div class="grid2"><div class="field"><label>Non-veg person</label>${inp("plan.household.me", h.me)}</div><div class="field"><label>Veg person</label>${inp("plan.household.partner", h.partner)}</div></div>
+    <div class="field"><label>Whose phone is this?</label><div class="seg"><button class="${h.iam !== "veg" ? "on" : ""}" data-a="iam" data-v="nonveg">${esc(h.me || "Non-veg person")}</button><button class="${h.iam === "veg" ? "on" : ""}" data-a="iam" data-v="veg">${esc(h.partner || "Veg person")}</button></div>
+      <p class="small muted">Decides whose plate counts toward calories and protein on non-veg nights.</p></div>
     <div class="grid2"><div class="field"><label>How you address the cook</label>${inp("plan.household.cook", h.cook)}</div><div class="field"><label>Chicken per meal (g)</label>${inp("plan.household.chickenG", h.chickenG, "num")}</div></div>
     <div class="grid2"><div class="field"><label>My rotis at lunch</label>${inp("plan.household.myBread.lunch", h.myBread.lunch, "num")}</div><div class="field"><label>My rotis / parathas at dinner</label>${inp("plan.household.myBread.dinner", h.myBread.dinner, "num")}</div></div>
     <div class="field"><label>Sunday: order</label>${lines("plan.sundayGuide.order", p.sundayGuide.order)}</div>
@@ -1201,6 +1240,8 @@ function renderPlan() {
   const gh = ghConf(), meta = ghMeta();
   const backup = `<span class="eyebrow">GitHub backup (automatic)</span>
     <p class="small muted">Saves one small file per day to a <b>private</b> GitHub repo, plus a full copy for restoring. Runs when the app opens or closes, at most every 15 minutes. The token stays on this phone and never goes into the backup.</p>
+    <div class="field"><label for="ghFolder">Backup folder</label><input id="ghFolder" type="text" value="${esc(gh.folder || "data")}" data-a-change="gh" data-f="folder" autocomplete="off">
+      <span class="small muted">Leave as <code>data</code> on Ronit's phone. On Yashvi's phone use <code>yashvi</code>, so the two never overwrite each other.</span></div>
     <div class="field"><label for="ghRepo">Private repo (owner/name)</label><input id="ghRepo" type="text" value="${esc(gh.repo || "")}" data-a-change="gh" data-f="repo" placeholder="your-username/ironcourt-data" autocomplete="off"></div>
     <div class="field"><label for="ghTok">Access token</label><input id="ghTok" type="password" value="${gh.token ? "••••••••" : ""}" data-a-change="gh" data-f="token" placeholder="github_pat_…" autocomplete="off"></div>
     <p class="small ${meta.err ? "" : "muted"}">${meta.err ? `<b>Last attempt failed:</b> ${esc(meta.err)}` : meta.last ? `Last backup: ${new Date(meta.last).toLocaleString("en-IN")}` : "No backup yet."}</p>
@@ -1267,6 +1308,7 @@ function onChange(e) {
     save(); render(); return openMealSheet();
   }
   if (el.dataset.aChange === "gh") { ghSet(el.dataset.f, el.value.trim()); return render(); }
+  if (el.dataset.aChange === "day-pick") { const v = el.value; ui.viewDay = v && v < todayKey() ? v : null; return render(); }
   if (el.dataset.aChange === "ics") {
     Cal.setUrl(el.value).then(() => {
       if (Native.on) return Cal.refresh(true).then((r) => { toast(r.ok ? "Classes loaded" : `Couldn't load: ${r.why}`); render(); });
@@ -1354,13 +1396,13 @@ const actions = {
   pfood: (b) => { addExtra(b.dataset.n, +b.dataset.k, +b.dataset.p, { party: true }); toast("Logged"); },
   rcheck: (b) => { const d = day(); d.recovery ??= {}; d.recovery[b.dataset.i] = !d.recovery[b.dataset.i]; save(); render(); },
   dcheck: (b) => {
-    const it = cookReminders(todayKey()).find((x) => x.id === b.dataset.id); if (!it) return;
+    const it = cookReminders(curKey()).find((x) => x.id === b.dataset.id); if (!it) return;
     if (it.go?.meal) { const W = S.week[weekOf(it.go.k)]; W.sent ??= {}; const key = `${it.go.k}.${it.go.meal}`; W.sent[key] = !W.sent[key]; }
     else { const d = day(); d.checks[it.id] = !d.checks[it.id]; }
     save(); render();
   },
   "tl-go": (b) => {
-    const it = cookReminders(todayKey()).find((x) => x.id === b.dataset.id); if (!it?.go) return;
+    const it = cookReminders(curKey()).find((x) => x.id === b.dataset.id); if (!it?.go) return;
     ui.tab = "food"; if (it.go.meal) ui.cookSel = { k: it.go.k, meal: it.go.meal };
     render(); window.scrollTo(0, 0);
     if (it.go.groc) setTimeout(() => document.querySelector("[data-a='groc-copy']")?.scrollIntoView({ block: "center" }), 50);
@@ -1369,7 +1411,7 @@ const actions = {
     const key = "reset-day-" + b.dataset.w;
     if (ui.confirm !== key) { ui.confirm = key; return render(); }
     ui.confirm = null;
-    const k = todayKey();
+    const k = curKey();
     S.days[k] = { key: k, checks: {}, water: 0, eaten: {}, choice: {}, extra: [], partyChecks: {} };
     if (b.dataset.w === "1") { S.workouts = S.workouts.filter((w) => w.date !== k || !w.done); }
     save(); toast("Today reset. Tap Undo to bring it back."); render();
@@ -1398,6 +1440,9 @@ const actions = {
   },
   undo: () => doUndo(),
   "phone-sync": () => syncNative(true),
+  "day-step": (b) => { const k = addDays(curKey(), +b.dataset.v); ui.viewDay = k >= todayKey() ? null : k; render(); },
+  "day-today": () => { ui.viewDay = null; render(); window.scrollTo(0, 0); },
+  iam: (b) => { H().iam = b.dataset.v; save(); render(); },
   "move-gym": (b) => {
     const d = day(), gym = P().schedule.find((x) => x.kind === "gym"); if (!gym) return;
     d.moved ??= {};
@@ -1518,6 +1563,10 @@ function importBackup(f) {
 // Writes data/days/YYYY-MM-DD.json (one per day: that day's log + workouts) and data/state.json
 // (everything, for restore) into a private repo through the GitHub contents API.
 const GH = KEY + ".gh", GHM = KEY + ".ghmeta";
+// Each person's phone backs up into its own folder of the same private repo.
+const ghFolder = () => (ghConf().folder || "data").replace(/[^\w-]/g, "") || "data";
+const icsPath = () => (ghFolder() === "data" ? "config/ics-url.txt" : `config/ics-url-${ghFolder()}.txt`);
+const classesPath = () => `${ghFolder()}/classes.json`;
 const ghConf = () => { try { return JSON.parse(localStorage.getItem(GH)) || {}; } catch { return {}; } };
 const ghMeta = () => { try { return JSON.parse(localStorage.getItem(GHM)) || { days: {}, sha: {} }; } catch { return { days: {}, sha: {} }; } };
 const ghSaveMeta = (m) => { try { localStorage.setItem(GHM, JSON.stringify(m)); } catch {} };
@@ -1565,11 +1614,11 @@ async function ghBackup(manual = false) {
       const text = JSON.stringify({ date: k, day: S.days[k], workouts: S.workouts.filter((w) => w.date === k) });
       const h = hash(text);
       if (meta.days[k] === h) continue;
-      await ghPut(`data/days/${k}.json`, text, meta);
+      await ghPut(`${ghFolder()}/days/${k}.json`, text, meta);
       meta.days[k] = h;
       ghSaveMeta(meta);
     }
-    await ghPut("data/state.json", JSON.stringify(S), meta);
+    await ghPut(`${ghFolder()}/state.json`, JSON.stringify(S), meta);
     meta.last = Date.now(); delete meta.err;
     ghSaveMeta(meta);
     if (manual) toast("Backed up to GitHub");
@@ -1583,19 +1632,19 @@ async function ghRestore() {
   if (!c.repo || !c.token) return toast("Add the repo and token first");
   try {
     toast("Restoring…");
-    const f = await ghApi("GET", "data/state.json");
+    const f = await ghApi("GET", `${ghFolder()}/state.json`);
     if (!f) return toast("No backup found in that repo");
     const data = JSON.parse(unb64(f.content));
     if (!data.plan || !data.days) throw new Error("backup file looks wrong");
     S = migrate(data); Store.save(S);
-    const meta = ghMeta(); meta.sha["data/state.json"] = f.sha; ghSaveMeta(meta);
+    const meta = ghMeta(); meta.sha[`${ghFolder()}/state.json`] = f.sha; ghSaveMeta(meta);
     toast("Restored from GitHub"); render();
   } catch (e) { toast(`Restore failed: ${e.message}`); }
 }
 
 Cal.useRemote(
-  async () => { const f = await ghApi("GET", "data/classes.json"); return f ? JSON.parse(unb64(f.content)) : null; },
-  async (u) => { const c = ghConf(); if (!c.repo || !c.token) return; const meta = ghMeta(); await ghPut("config/ics-url.txt", u, meta); ghSaveMeta(meta); },
+  async () => { const f = await ghApi("GET", classesPath()); return f ? JSON.parse(unb64(f.content)) : null; },
+  async (u) => { const c = ghConf(); if (!c.repo || !c.token) return; const meta = ghMeta(); await ghPut(icsPath(), u, meta); ghSaveMeta(meta); },
 );
 
 // ================= boot =================

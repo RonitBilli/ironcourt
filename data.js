@@ -218,6 +218,29 @@ const EXERCISES = {
     cues: ["Upper back on a bench, bar on hips (use a pad)", "Drive up, chin tucked", "Pause at the top"],
     alts: [["back_ext", "Bar taken"], ["sl_rdl", "No equipment"]] },
 
+  // ---- Glute focus ----
+  hip_abduction: { name: "Hip abduction machine (lean forward)", muscle: "Glutes (upper / side)", video: "OQC8nso2aPE", demo: "",
+    cues: ["Lean the torso forward and hold the handles", "Push the knees out, pause 1 s at the widest point", "Slow on the way back; 15-20 reps"],
+    alts: [["cable_abduction", "Machine taken"], ["band_walk", "No machine"]] },
+  cable_abduction: { name: "Standing cable hip abduction", muscle: "Glutes (upper / side)", video: "ZAKAn7qLZ5I", demo: "vSqhrbzZb7A",
+    cues: ["Ankle strap on the outside leg, hold the frame", "Lift the leg out to the side, toes forward", "Don't lean away to cheat"],
+    alts: [["hip_abduction", "Have the machine"], ["band_walk", "No cables"]] },
+  glute_kickback: { name: "Cable glute kickback", muscle: "Glutes", video: "l4zReIOfPCQ", demo: "n-cgsNePyFo",
+    cues: ["Ankle strap, hinge forward a little, hold the frame", "Kick back and slightly out, squeeze at the top", "Don't arch the lower back"],
+    alts: [["glute_bridge", "No cables"], ["hip_thrust", "Want heavier"]] },
+  glute_bridge: { name: "Dumbbell glute bridge", muscle: "Glutes", video: "OUgsJ8-Vi0E", demo: "L9KZfxT654Y",
+    cues: ["Dumbbell on the hips, feet close to the glutes", "Drive through the heels, ribs down", "Hold 2 s at the top; 15-20 reps"],
+    alts: [["hip_thrust", "Want heavier"], ["glute_kickback", "Floor taken"]] },
+  band_walk: { name: "Lateral band walk", muscle: "Glutes (upper / side)", video: "5VtGyiddPh4", demo: "M5uxEQH5BUM",
+    cues: ["Band above the knees or at the ankles", "Stay in a quarter squat, step wide", "Feet never touch; 15 steps each way"],
+    alts: [["hip_abduction", "Have the machine"], ["cable_abduction", "Have cables"]] },
+  b_stance_rdl: { name: "B-stance dumbbell RDL", muscle: "Glutes + hamstrings", video: "14CoYv0peBA", demo: "h1pcb3fbrzk",
+    cues: ["Back foot on its toes, most weight on the front leg", "Hips back, flat back, dumbbells close", "Stand up by squeezing the front glute"],
+    alts: [["db_rdl", "Balance is off today"], ["sl_rdl", "No equipment"]] },
+  glute_hyper: { name: "Glute-focused back extension", muscle: "Glutes", video: "EBui4Bt5N7o", demo: "S1_eZIIZlIc",
+    cues: ["Pad at the hip crease, toes turned out", "Round the upper back, chin tucked", "Lift by squeezing the glutes, not the lower back"],
+    alts: [["glute_bridge", "Bench taken"], ["hip_thrust", "Want heavier"]] },
+
   // ---- Calves ----
   standing_calf: { name: "Standing calf raise", muscle: "Calves", video: "SVtg-1loH4c", demo: "N3awlEyTY98",
     cues: ["Pause 2 s at the bottom stretch", "Up onto the big toe", "No bouncing"],
@@ -297,6 +320,36 @@ const SESSIONS = {
     { ex: "reverse_cable_fly", sets: 2, reps: "12-15", rest: 60 },
     { ex: "ab_wheel", sets: 3, reps: "8-12", rest: 60 },
     { ex: "incline_walk", sets: 1, reps: "20 min", rest: 0 } ] },
+  // Glutes & legs program (Yashvi): glute-led lifts, moderate quad work, no exercise twice a week.
+  GA: { name: "Glutes A", focus: "Heavy hip thrust + hinge", items: [
+    { ex: "hip_thrust", sets: 4, reps: "6-10", rest: 150 },
+    { ex: "rdl", sets: 3, reps: "8-10", rest: 150 },
+    { ex: "bss", sets: 3, reps: "8-12 / leg, lean forward", rest: 120 },
+    { ex: "hip_abduction", sets: 3, reps: "15-20", rest: 60 },
+    { ex: "plank", sets: 3, reps: "40 s", rest: 45 } ] },
+  UA: { name: "Upper A", focus: "Back + shoulders", items: [
+    { ex: "lat_pulldown", sets: 3, reps: "10-12", rest: 90 },
+    { ex: "incline_db_press", sets: 3, reps: "8-12", rest: 90 },
+    { ex: "seated_cable_row", sets: 3, reps: "10-12", rest: 90 },
+    { ex: "db_lateral", sets: 3, reps: "12-20", rest: 60 },
+    { ex: "pushdown", sets: 2, reps: "12-15", rest: 60 } ] },
+  GB: { name: "Glutes B", focus: "Single-leg + glute isolation", items: [
+    { ex: "glute_hyper", sets: 3, reps: "12-15", rest: 90 },
+    { ex: "walking_lunge", sets: 3, reps: "10-12 / leg, long steps", rest: 90 },
+    { ex: "b_stance_rdl", sets: 3, reps: "10-12 / leg", rest: 90 },
+    { ex: "glute_kickback", sets: 3, reps: "12-15 / leg", rest: 60 },
+    { ex: "seated_leg_curl", sets: 3, reps: "10-12", rest: 60 } ] },
+  UB: { name: "Upper B + glute finisher", focus: "Upper body, then a glute pump", items: [
+    { ex: "neutral_pulldown", sets: 3, reps: "10-12", rest: 90 },
+    { ex: "machine_chest_press", sets: 3, reps: "10-12", rest: 90 },
+    { ex: "one_arm_db_row", sets: 3, reps: "10-12 / arm", rest: 60 },
+    { ex: "reverse_pec_deck", sets: 2, reps: "15", rest: 60 },
+    { ex: "cable_abduction", sets: 2, reps: "15-20 / leg", rest: 45 },
+    { ex: "glute_bridge", sets: 2, reps: "15-20", rest: 60 } ] },
+  GOPT: { name: "Walk + glute pump", focus: "Optional, easy day", items: [
+    { ex: "incline_walk", sets: 1, reps: "30 min", rest: 0 },
+    { ex: "band_walk", sets: 3, reps: "15 steps each way", rest: 45 },
+    { ex: "lying_leg_raise", sets: 3, reps: "12", rest: 45 } ] },
   HOME: { name: "Hostel room", focus: "No equipment, 35 min", items: [
     { ex: "deficit_pushup", sets: 3, reps: "to 1 short of failure", rest: 90 },
     { ex: "inverted_row", sets: 3, reps: "8-15", rest: 90 },
@@ -402,6 +455,7 @@ const DEFAULT_PLAN = {
   rotations: {
     cut: ["U1", "L1", "REST", "U2", "L2", "OPT", "REST"],
     term: ["FBA", "FBB", "FBC"],
+    glute: ["GA", "UA", "REST", "GB", "UB", "GOPT", "REST"],
   },
   sessions: SESSIONS,
   exercises: EXERCISES,
