@@ -13,7 +13,7 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
 const uid = () => Math.random().toString(36).slice(2, 9);
 
 function freshState() {
-  return { plan: clone(DEFAULT_PLAN), days: {}, workouts: [], active: null, rot: { cut: 0, term: 0, glute: 0 }, swaps: {}, week: {} };
+  return { plan: clone(DEFAULT_PLAN), days: {}, workouts: [], activeBy: { ronit: null, yashvi: null }, rot: { cut: 0, term: 0, glute: 0 }, swaps: {}, swapsY: {}, week: {} };
 }
 
 function migrate(s) {
@@ -61,6 +61,17 @@ function migrate(s) {
     s.rot.glute ??= 0;
     s.plan.version = 5;
   }
+  if (s.plan.version < 6) {
+    // Workouts are now tagged by person; the partner's program is the beginner glutes plan.
+    s.activeBy = { ronit: s.active || null, yashvi: null };
+    delete s.active;
+    s.swapsY ??= {};
+    for (const id of ["GA", "UA", "GB", "UB", "GOPT"]) s.plan.sessions[id] = clone(SESSIONS[id]);
+    s.plan.rotations.glute = clone(DEFAULT_PLAN.rotations.glute);
+    if (s.plan.mode === "glute") s.plan.mode = "cut";
+    s.plan.version = 6;
+  }
+  s.activeBy ??= { ronit: null, yashvi: null };
   for (const [id, d] of Object.entries(DISHES)) if (!s.plan.dishes[id]) s.plan.dishes[id] = clone(d);
   s.week ??= {};
   for (const [k, d] of Object.entries(s.days)) d.key = k;
@@ -181,23 +192,30 @@ function exVideo(info, key) {
 // ================= ui state =================
 const ui = { tab: "today", open: {}, foodQ: "", editSession: null, editEx: null, exQ: "", lang: "en", confirm: null, lastTab: {} };
 try { ui.tab = localStorage.getItem(KEY + ".tab") || "today"; } catch {}
+ui.who = "ronit";
+try { ui.who = localStorage.getItem(KEY + ".who") === "yashvi" ? "yashvi" : "ronit"; } catch {}
 
 // ================= rotation + workouts =================
-const rotation = () => P().rotations[P().mode] || [];
-function currentSessionId() {
-  const r = rotation();
+const rotation = (who = ui.who) => P().rotations[rotKey(who)] || [];
+// Two people train from this phone. "ronit" follows the cut/term plan, "yashvi" the glutes plan.
+const whoOf = (w) => w.who || "ronit";
+const whoName = (who) => (who === "yashvi" ? H().partner || "Yashvi" : H().me || "Ronit");
+const rotKey = (who = ui.who) => (who === "yashvi" ? "glute" : P().mode);
+const swapsFor = (who = ui.who) => (who === "yashvi" ? (S.swapsY ??= {}) : S.swaps);
+function currentSessionId(who = ui.who) {
+  const r = rotation(who);
   if (!r.length) return null;
-  return r[(S.rot[P().mode] || 0) % r.length];
+  return r[(S.rot[rotKey(who)] || 0) % r.length];
 }
-function advanceRotation() { S.rot[P().mode] = ((S.rot[P().mode] || 0) + 1) % Math.max(rotation().length, 1); }
-const activeWorkout = () => S.workouts.find((w) => w.id === S.active) || null;
-const workoutsOn = (k) => S.workouts.filter((w) => w.date === k && w.done);
+function advanceRotation(who = ui.who) { const k = rotKey(who); S.rot[k] = ((S.rot[k] || 0) + 1) % Math.max(rotation(who).length, 1); }
+const activeWorkout = (who = ui.who) => S.workouts.find((w) => w.id === S.activeBy?.[who]) || null;
+const workoutsOn = (k, who = "ronit") => S.workouts.filter((w) => w.date === k && w.done && whoOf(w) === who);
 
-function logsFor(ex, excludeId, n = 2) {
+function logsFor(ex, excludeId, n = 2, who = ui.who) {
   const out = [];
   for (let i = S.workouts.length - 1; i >= 0 && out.length < n; i--) {
     const w = S.workouts[i];
-    if (w.id === excludeId || !w.done) continue;
+    if (w.id === excludeId || !w.done || whoOf(w) !== who) continue;
     const it = w.items.find((x) => x.ex === ex && x.sets.some((s) => s.done));
     if (it) out.push({ date: w.date, sets: it.sets.filter((s) => s.done), effort: it.effort || null });
   }
@@ -239,14 +257,15 @@ function startWorkout(sid) {
   const w = {
     id: uid(), date: curKey(), session: sid, start: Date.now(), done: false,
     items: se.items.map((it) => {
-      const ex = S.swaps[it.ex] || it.ex;
+      const ex = swapsFor()[it.ex] || it.ex;
       const last = lastLog(ex);
       const lw = last ? last.sets[last.sets.length - 1].w : "";
       return { ex, orig: it.ex, reps: it.reps, rest: +it.rest || 90, note: "", sets: Array.from({ length: +it.sets || 3 }, () => ({ w: lw || "", r: "", done: false })) };
     }),
   };
   S.workouts.push(w);
-  S.active = w.id;
+  w.who = ui.who;
+  S.activeBy[ui.who] = w.id;
   save();
   wakeLock(true);
   render();
@@ -256,13 +275,14 @@ function finishWorkout() {
   const w = activeWorkout();
   if (!w) return;
   const logged = w.items.some((it) => it.sets.some((s) => s.done));
-  if (!logged) { S.workouts = S.workouts.filter((x) => x.id !== w.id); S.active = null; save(); wakeLock(false); toast("Workout discarded (nothing logged)"); render(); return; }
+  if (!logged) { S.workouts = S.workouts.filter((x) => x.id !== w.id); S.activeBy[whoOf(w)] = null; save(); wakeLock(false); toast("Workout discarded (nothing logged)"); render(); return; }
   w.done = true; w.end = Date.now();
-  if (w.session === currentSessionId()) advanceRotation();
+  const who = whoOf(w);
+  if (w.session === currentSessionId(who)) advanceRotation(who);
   const d = day(w.date);
   const gym = P().schedule.find((x) => x.kind === "gym");
-  if (gym) d.checks[gym.id] = true;
-  S.active = null;
+  if (gym && who === "ronit") d.checks[gym.id] = true;
+  S.activeBy[who] = null;
   save();
   wakeLock(false);
   stopRest();
@@ -278,7 +298,7 @@ async function wakeLock(on) {
     if (!on && lock) { await lock.release(); lock = null; }
   } catch {}
 }
-document.addEventListener("visibilitychange", () => { if (!document.hidden && S.active) wakeLock(true); });
+document.addEventListener("visibilitychange", () => { if (!document.hidden && (S.activeBy?.ronit || S.activeBy?.yashvi)) wakeLock(true); });
 
 // ================= rest timer =================
 let rest = null, audio = null;
@@ -364,13 +384,15 @@ function renderToday() {
       <div class="val">${val}<small> ${unit}</small></div>
       <span class="small muted">${target}</span>${extra}</div>`;
 
-  const sid = currentSessionId(), se = p.sessions[sid];
-  const aw = activeWorkout();
+  const sid = currentSessionId("ronit"), se = p.sessions[sid];
+  const aw = activeWorkout("ronit");
+  const ySid = currentSessionId("yashvi"), yDone = workoutsOn(k, "yashvi").length, yAct = activeWorkout("yashvi");
+  const yLine = `<p class="small muted" style="margin-top:8px">${esc(whoName("yashvi"))}: ${yAct ? "workout in progress" : yDone ? "done today" : ySid === "REST" ? "rest day" : esc(p.sessions[ySid]?.name || "")}</p>`;
   let next;
-  if (aw) next = `<div class="spread"><div><span class="eyebrow">Workout in progress</span><h2>${esc(p.sessions[aw.session]?.name)}</h2></div><button class="btn primary" data-a="go" data-tab="train">Continue</button></div>`;
+  if (aw) next = `<div class="spread"><div><span class="eyebrow">Workout in progress</span><h2>${esc(p.sessions[aw.session]?.name)}</h2></div><button class="btn primary" data-a="go" data-tab="train" data-who="ronit">Continue</button></div>`;
   else if (doneW) next = `<div class="spread"><div><span class="eyebrow">Gym</span><h2>Done today</h2></div><span class="chip good">${esc(workoutsOn(k).map((w) => p.sessions[w.session]?.name).join(", "))}</span></div>`;
   else if (sid === "REST") next = `<div class="spread"><div><span class="eyebrow">Next in rotation</span><h2>Rest day</h2><p class="small muted">Squash only. Walk, stretch, sleep.</p></div><button class="btn" data-a="rest-done">Mark rest done</button></div>`;
-  else if (se) next = `<div class="spread"><div><span class="eyebrow">Next in rotation</span><h2>${esc(se.name)}</h2><p class="small muted">${esc(se.focus)} · ${se.items.length} exercises</p></div><button class="btn primary" data-a="start" data-sid="${sid}">Start</button></div>`;
+  else if (se) next = `<div class="spread"><div><span class="eyebrow">Next in rotation</span><h2>${esc(se.name)}</h2><p class="small muted">${esc(se.focus)} · ${se.items.length} exercises</p></div><button class="btn primary" data-a="start" data-sid="${sid}" data-who="ronit">Start</button></div>`;
   else next = `<p class="muted">No rotation set. Add sessions in Plan.</p>`;
 
   const party = isParty(k);
@@ -393,7 +415,7 @@ function renderToday() {
     ${gymClash ? `<section class="card week1"><b>Gym clashes with ${esc(gymClash)}</b>
       <p class="small">${gymSlot ? `Next free 75 minutes: <b>${fmtTime(gymSlot)}</b>.` : "No free 75-minute gap before squash today."}</p>
       <div class="row wrap">${gymSlot ? `<button class="btn small primary" data-a="move-gym" data-t="${gymSlot}">Move gym to ${fmtTime(gymSlot)}</button>` : ""}<button class="btn small" data-a="move-gym" data-t="">Keep ${fmtTime(gymItem.time)}</button></div></section>` : ""}
-    <section class="card next">${next}</section>
+    <section class="card next">${next}${yLine}</section>
     ${partyCard}
 
     <div class="meters">
@@ -505,7 +527,7 @@ function reminderPlan() {
       const at = parseKey(k); if (h < 4) at.setDate(at.getDate() + 1); at.setHours(h, m, 0, 0);
       let body = it.sub || "";
       if (it.kind === "meal") { const slot = P().meals.find((x) => x.id === it.ref); if (slot) body = mealOpt(slot, d || { choice: {}, key: k }, k).name; }
-      if (it.kind === "gym") { const sid = currentSessionId(); body = sid === "REST" ? "Rest day in the rotation" : P().sessions[sid]?.name || ""; }
+      if (it.kind === "gym") { const sid = currentSessionId("ronit"); body = sid === "REST" ? "Rest day in the rotation" : P().sessions[sid]?.name || ""; }
       out.push({ key: `${k}|${it.id}`, at, title: it.title, body });
     }
   }
@@ -586,7 +608,14 @@ function exCard(item, idx, w) {
   </article>`;
 }
 
+function whoSwitch() {
+  const tab = (who) => `<button class="${ui.who === who ? "on" : ""}" data-a="who" data-v="${who}">${esc(whoName(who))}${activeWorkout(who) ? " ●" : ""}</button>`;
+  return `<div class="seg whoseg">${tab("ronit")}${tab("yashvi")}</div>`;
+}
 function renderTrain() {
+  return whoSwitch() + renderTrainFor();
+}
+function renderTrainFor() {
   const p = P(), w = activeWorkout();
   if (w) {
     const se = p.sessions[w.session];
@@ -597,7 +626,8 @@ function renderTrain() {
       <section class="card"><div class="spread"><div class="session-head"><span class="eyebrow">In progress · ${doneSets}/${allSets} sets</span><h2>${esc(se?.name || "Workout")}</h2></div>
         <button class="btn primary" data-a="finish">Finish</button></div>
         <div class="bar ${doneSets === allSets ? "good" : ""}"><i style="width:${allSets ? (doneSets / allSets) * 100 : 0}%"></i></div></section>
-      ${week1 ? `<section class="card week1"><b>Week 1</b><p class="small">Use about 70% of your old weights and stop 2-3 reps short of failure. Tendons need a week to catch up with muscle memory.</p></section>` : ""}
+      ${ui.who === "yashvi" && S.workouts.filter((x) => x.done && whoOf(x) === "yashvi").length < 8 ? `<section class="card week1"><b>First 2-3 weeks: learn the movements</b><p class="small">Light weights, slow and controlled, stop 3 reps before it gets hard. Watch the demo for each lift, and add weight only when every set feels smooth at the top of the rep range.</p></section>` : ""}
+      ${week1 && ui.who === "ronit" ? `<section class="card week1"><b>Week 1</b><p class="small">Use about 70% of your old weights and stop 2-3 reps short of failure. Tendons need a week to catch up with muscle memory.</p></section>` : ""}
       <section class="card flat"><p class="small">Isolation exercises: push to 0-1 reps short of failure. Big lifts: 1-2 short. When every set hits the top of the range, add weight next time.</p></section>
       ${w.items.map((it, i) => exCard(it, i, w)).join("")}
       <section class="card flat"><div class="row wrap">
@@ -607,13 +637,13 @@ function renderTrain() {
       <button class="btn block ghost" data-a="discard">${ui.confirm === "discard" ? "Tap again to discard" : "Discard workout"}</button>`;
   }
 
-  const sid = currentSessionId(), r = rotation(), ri = (S.rot[p.mode] || 0) % Math.max(r.length, 1);
+  const sid = currentSessionId(), r = rotation(), ri = (S.rot[rotKey()] || 0) % Math.max(r.length, 1);
   const se = p.sessions[sid];
   const strip = `<div class="rot">${r.map((x, i) => `<span class="${i === ri ? "cur" : ""}">${x === "REST" ? "Rest" : esc(p.sessions[x]?.name || x)}</span>`).join("")}</div>`;
-  const preview = se ? `<div class="stack">${se.items.map((it, i) => { const ex = S.swaps[it.ex] || it.ex; return `<div class="spread small"><span>${i + 1}. ${esc(exInfo(ex).name)}</span><span class="muted num">${it.sets} × ${esc(it.reps)}</span></div>`; }).join("")}</div>` : "";
-  const history = S.workouts.filter((x) => x.done).slice(-5).reverse();
+  const preview = se ? `<div class="stack">${se.items.map((it, i) => { const ex = swapsFor()[it.ex] || it.ex; return `<div class="spread small"><span>${i + 1}. ${esc(exInfo(ex).name)}</span><span class="muted num">${it.sets} × ${esc(it.reps)}</span></div>`; }).join("")}</div>` : "";
+  const history = S.workouts.filter((x) => x.done && whoOf(x) === ui.who).slice(-5).reverse();
   return `
-    <section class="card"><span class="eyebrow">${p.mode === "cut" ? "Cut rotation" : "Term rotation"} · moves on when you finish, never by weekday</span>${strip}</section>
+    <section class="card"><span class="eyebrow">${ui.who === "yashvi" ? "Glutes & legs" : p.mode === "cut" ? "Cut rotation" : "Term rotation"} · moves on when you finish, never by weekday</span>${strip}</section>
     <section class="card">
       ${sid === "REST" ? `<h2>Rest day</h2><p class="muted">Squash only today. Walk, stretch, sleep 8 hours.</p>
         <div class="row"><button class="btn primary grow" data-a="rest-done">Mark rest done</button></div>`
@@ -622,7 +652,7 @@ function renderTrain() {
       <button class="btn block ghost" data-a="skip">Skip to next in rotation</button>
     </section>
     <section class="card"><h3>Do a different session</h3><p class="small muted">Gym closed or packed? The hostel session needs no equipment. Doing a different session doesn't move the rotation.</p>
-      <div class="row wrap">${Object.entries(p.sessions).filter(([id]) => id !== sid).map(([id, s]) => `<button class="btn small" data-a="start" data-sid="${id}">${esc(s.name)}</button>`).join("")}</div></section>
+      <div class="row wrap">${Object.entries(p.sessions).filter(([id]) => id !== sid && (id === "HOME" || (ui.who === "yashvi") === ["GA", "UA", "GB", "UB", "GOPT"].includes(id))).map(([id, s]) => `<button class="btn small" data-a="start" data-sid="${id}">${esc(s.name)}</button>`).join("")}</div></section>
     ${history.length ? `<section class="card"><h3>Recent</h3>${history.map((h) => `<div class="spread small"><span>${fmtDay(h.date)} · ${esc(p.sessions[h.session]?.name || h.session)}</span><span class="muted num">${h.items.reduce((a, it) => a + it.sets.filter((s) => s.done).length, 0)} sets</span></div>`).join("")}</section>` : ""}`;
 }
 
@@ -651,7 +681,7 @@ function usedElsewhere(id, exceptSession) {
   for (const sid of new Set(rotation())) {
     if (sid === exceptSession) continue;
     const se = P().sessions[sid];
-    if (se && se.items.some((it) => (S.swaps[it.ex] || it.ex) === id)) return se.name;
+    if (se && se.items.some((it) => (swapsFor()[it.ex] || it.ex) === id)) return se.name;
   }
   return null;
 }
@@ -1050,7 +1080,7 @@ function chart(series) {
 function weekStats(endK) {
   const p = P(), ks = Array.from({ length: 7 }, (_, i) => addDays(endK, -i));
   const ds = ks.map((k) => S.days[k]).filter(Boolean);
-  const sessions = S.workouts.filter((w) => w.done && ks.includes(w.date)).length;
+  const sessions = S.workouts.filter((w) => w.done && ks.includes(w.date) && whoOf(w) === "ronit").length;
   const protDays = ks.filter((k) => S.days[k] && totals(S.days[k]).protein >= p.targets.protein).length;
   const drinks = ks.reduce((a, k) => a + drinksOf(S.days[k]), 0);
   const dryDays = ks.filter((k) => S.days[k] && drinksOf(S.days[k]) === 0).length;
@@ -1062,7 +1092,7 @@ function weekStats(endK) {
 }
 function liftsTable() {
   const by = {};
-  for (const w of S.workouts.filter((x) => x.done)) for (const it of w.items) {
+  for (const w of S.workouts.filter((x) => x.done && whoOf(x) === ui.who)) for (const it of w.items) {
     const best = Math.max(0, ...it.sets.filter((s) => s.done && +s.w && +s.r).map((s) => +s.w * (1 + +s.r / 30)));
     if (best) (by[it.ex] ??= []).push({ k: w.date, v: best });
   }
@@ -1096,7 +1126,7 @@ function renderProgress() {
     </div>
     <button class="btn" data-a="week-copy">Copy week summary for Claude</button></section>
     <section class="card"><h2>Waist</h2>${waists.length ? `<div class="stack">${waists.map((w, i) => `<div class="spread small"><span>${fmtDay(w.k)}</span><span class="num"><b>${w.v} cm</b>${i ? ` <span class="muted">(${w.v - waists[i - 1].v > 0 ? "+" : ""}${(w.v - waists[i - 1].v).toFixed(1)})</span>` : ""}</span></div>`).join("")}</div>` : `<p class="small muted">Measure at the navel every Sunday morning and log it on the Today tab.</p>`}</section>
-    <section class="card"><h2>Strength</h2>${liftsTable()}</section>`;
+    <section class="card"><div class="spread"><h2>Strength</h2>${whoSwitch()}</div>${liftsTable()}</section>`;
 }
 function weekSummary() {
   const k = todayKey(), st = weekStats(k), ws = weightSeries(), p = P();
@@ -1106,7 +1136,7 @@ function weekSummary() {
   lines.push(`Workouts: ${st.sessions}. Protein target hit: ${st.protDays}/7 days (avg ${st.prot ? st.prot.toFixed(0) : "–"} g). Drinks: ${st.drinks}. Avg sleep: ${st.sleep ? st.sleep.toFixed(1) : "–"} h. Avg steps: ${st.steps ? Math.round(st.steps) : "–"}.`);
   for (let i = 6; i >= 0; i--) {
     const dk = addDays(k, -i), d = S.days[dk];
-    const ws2 = S.workouts.filter((w) => w.done && w.date === dk);
+    const ws2 = S.workouts.filter((w) => w.done && w.date === dk && whoOf(w) === "ronit");
     const parts = [];
     if (d?.weight) parts.push(`${d.weight} kg`);
     if (d) { const t = totals(d); if (t.kcal) parts.push(`${t.kcal} kcal / ${t.protein} g P`); }
@@ -1140,8 +1170,8 @@ function renderPlan() {
   ui.editSession ??= sessIds[0];
   const es = p.sessions[ui.editSession];
 
-  const mode = `<div class="seg wrap"><button class="${p.mode === "cut" ? "on" : ""}" data-a="mode" data-v="cut">Cut (4-5 days)</button><button class="${p.mode === "term" ? "on" : ""}" data-a="mode" data-v="term">Term (3 days)</button><button class="${p.mode === "glute" ? "on" : ""}" data-a="mode" data-v="glute">Glutes & legs</button></div>
-    <p class="small muted">Cut and Term are the upper/lower and full-body programs. <b>Glutes & legs</b> is the 4-day glute-focused program: glute-led lifts (hip thrust, RDL, lunges, abduction), moderate thigh work, two upper-body days, and an optional walk day.</p>
+  const mode = `<div class="seg wrap"><button class="${p.mode === "cut" ? "on" : ""}" data-a="mode" data-v="cut">Cut (4-5 days)</button><button class="${p.mode === "term" ? "on" : ""}" data-a="mode" data-v="term">Term (3 days)</button></div>
+    <p class="small muted">Cut and Term are the upper/lower and full-body programs. The second person's glutes & legs program lives on the Train tab's second switch.</p>
     <div class="grid2"><div class="field"><label>Cut starts</label>${inp("plan.cutStart", p.cutStart, "date", 'data-rerender="1"')}</div><div class="field"><label>Cut ends</label>${inp("plan.cutEnd", p.cutEnd, "date", 'data-rerender="1"')}</div></div>`;
 
   const targets = `<div class="grid2">
@@ -1160,6 +1190,7 @@ function renderPlan() {
     + `<button class="btn" data-a="sched-add">+ Add item</button>`;
 
   const rot = rotation();
+  const rotHead = `<div class="spread"><span class="small muted">Editing</span>${whoSwitch()}</div>`;
   const rotEd = `<div class="stack">${rot.map((x, i) => `<div class="row"><span class="grow">${i + 1}. ${x === "REST" ? "Rest day" : esc(p.sessions[x]?.name || x)}</span>
       <button class="icon-btn" data-a="rot-move" data-i="${i}" data-v="-1" aria-label="Up">↑</button><button class="icon-btn" data-a="rot-move" data-i="${i}" data-v="1" aria-label="Down">↓</button><button class="icon-btn" data-a="rot-del" data-i="${i}" aria-label="Remove">✕</button></div>`).join("")}</div>
     <div class="row"><select id="rotAdd" class="grow" aria-label="Add to rotation"><option value="REST">Rest day</option>${sessIds.map((id) => `<option value="${id}">${esc(p.sessions[id].name)}</option>`).join("")}</select><button class="btn small" data-a="rot-add">Add</button></div>`;
@@ -1255,7 +1286,7 @@ function renderPlan() {
     ${sec("mode", "Mode and dates", mode, p.mode === "cut" ? "Cut" : "Term")}
     ${sec("targets", "Daily targets", targets, `${p.targets.kcal} kcal · ${p.targets.protein} g protein`)}
     ${sec("schedule", "Daily schedule", schedule, `${p.schedule.length} items`)}
-    ${sec("rotation", "Workout rotation", rotEd, `${p.mode} mode · ${rot.length} slots`)}
+    ${sec("rotation", "Workout rotation", rotHead + rotEd, `${esc(whoName(ui.who))} · ${rot.length} slots`)}
     ${sec("sessions", "Workouts", sessEd, `${sessIds.length} sessions`)}
     ${sec("exercises", "Exercises, videos, swaps", exEd, `${Object.keys(p.exercises).length} exercises`)}
     ${sec("meals", "Meals", meals, "Options you can switch between each day")}
@@ -1341,14 +1372,15 @@ document.addEventListener("toggle", (e) => {
 }, true);
 
 const actions = {
-  go: (b) => { ui.tab = b.dataset.tab; render(); window.scrollTo(0, 0); },
-  start: (b) => { if (activeWorkout()) { toast("Finish the current workout first"); ui.tab = "train"; return render(); } ui.tab = "train"; startWorkout(b.dataset.sid); },
+  go: (b) => { if (b.dataset.who) ui.who = b.dataset.who; ui.tab = b.dataset.tab; render(); window.scrollTo(0, 0); },
+  who: (b) => { ui.who = b.dataset.v; try { localStorage.setItem(KEY + ".who", ui.who); } catch {} render(); },
+  start: (b) => { if (b.dataset.who) ui.who = b.dataset.who; if (activeWorkout()) { toast("Finish the current workout first"); ui.tab = "train"; return render(); } ui.tab = "train"; startWorkout(b.dataset.sid); },
   "rest-done": () => { advanceRotation(); save(); toast("Rest day logged. Rotation moved on."); render(); },
   skip: () => { advanceRotation(); save(); render(); },
   finish: () => finishWorkout(),
   discard: () => {
     if (ui.confirm !== "discard") { ui.confirm = "discard"; return render(); }
-    ui.confirm = null; S.workouts = S.workouts.filter((w) => w.id !== S.active); S.active = null; save(); wakeLock(false); stopRest(); render();
+    ui.confirm = null; S.workouts = S.workouts.filter((w) => w.id !== S.activeBy[ui.who]); S.activeBy[ui.who] = null; save(); wakeLock(false); stopRest(); render();
   },
   toggle: (b) => { const o = (ui.open[b.dataset.k] ??= {}); o[b.dataset.f] = !o[b.dataset.f]; render(); },
   "set-done": (b) => {
@@ -1376,7 +1408,7 @@ const actions = {
     it.ex = id;
     const last = lastLog(id);
     it.sets.forEach((s) => { if (!s.done) s.w = last ? last.sets[last.sets.length - 1].w : ""; });
-    if (b.dataset.always === "1") { if (id === it.orig) delete S.swaps[it.orig]; else S.swaps[it.orig] = id; }
+    if (b.dataset.always === "1") { const sw = swapsFor(); if (id === it.orig) delete sw[it.orig]; else sw[it.orig] = id; }
     save(); closeSheet(); toast(`Swapped to ${exInfo(id).name}${b.dataset.always === "1" ? " (always)" : " (today)"}`); render();
   },
   "sheet-close": () => closeSheet(),
@@ -1490,7 +1522,7 @@ const actions = {
   export: () => exportBackup(),
   reset: () => {
     if (ui.confirm !== "reset") { ui.confirm = "reset"; return render(); }
-    ui.confirm = null; S = freshState(); save(); toast("Reset done"); render();
+    ui.confirm = null; S = migrate(freshState()); save(); toast("Reset done"); render();
   },
 };
 
@@ -1648,7 +1680,7 @@ Cal.useRemote(
 );
 
 // ================= boot =================
-if (S.active && activeWorkout()) wakeLock(true);
+if (S.activeBy?.ronit || S.activeBy?.yashvi) wakeLock(true);
 render();
 (async () => {
   if (Native.on && !Store.load()) {

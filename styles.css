@@ -485,3 +485,7 @@ code { font: 500 13px ui-monospace, SFMono-Regular, Menlo, monospace; background
 .daypick::before { content: "📅"; font-size: 18px; width: 38px; height: 38px; display: grid; place-items: center; background: var(--surface-2); border-radius: 12px; }
 .pastbar { margin-top: 10px; justify-content: space-between; background: var(--warn-soft); color: var(--warn); border-radius: 14px; padding: 8px 8px 8px 14px; }
 .seg.wrap { flex-wrap: wrap; }
+
+/* ---------- v6: two people on the Train tab ---------- */
+.whoseg { align-self: start; }
+main > .whoseg { justify-self: start; }

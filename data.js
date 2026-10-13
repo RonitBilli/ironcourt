@@ -320,36 +320,37 @@ const SESSIONS = {
     { ex: "reverse_cable_fly", sets: 2, reps: "12-15", rest: 60 },
     { ex: "ab_wheel", sets: 3, reps: "8-12", rest: 60 },
     { ex: "incline_walk", sets: 1, reps: "20 min", rest: 0 } ] },
-  // Glutes & legs program: glute-led lifts, moderate quad work, no exercise twice a week.
-  GA: { name: "Glutes A", focus: "Heavy hip thrust + hinge", items: [
-    { ex: "hip_thrust", sets: 4, reps: "6-10", rest: 150 },
-    { ex: "rdl", sets: 3, reps: "8-10", rest: 150 },
-    { ex: "bss", sets: 3, reps: "8-12 / leg, lean forward", rest: 120 },
+  // Glutes & legs program for a first-time lifter: fewer sets, higher reps, form first.
+  // Glute-led lifts, moderate thigh work, no exercise twice in a week.
+  GA: { name: "Glutes A", focus: "Hip thrust + hinge", items: [
+    { ex: "hip_thrust", sets: 3, reps: "10-12", rest: 120 },
+    { ex: "db_rdl", sets: 3, reps: "10-12", rest: 120 },
+    { ex: "bss", sets: 2, reps: "10-12 / leg, lean forward", rest: 90 },
     { ex: "hip_abduction", sets: 3, reps: "15-20", rest: 60 },
-    { ex: "plank", sets: 3, reps: "40 s", rest: 45 } ] },
+    { ex: "plank", sets: 3, reps: "30 s", rest: 45 } ] },
   UA: { name: "Upper A", focus: "Back + shoulders", items: [
     { ex: "lat_pulldown", sets: 3, reps: "10-12", rest: 90 },
-    { ex: "incline_db_press", sets: 3, reps: "8-12", rest: 90 },
+    { ex: "incline_db_press", sets: 3, reps: "10-12", rest: 90 },
     { ex: "seated_cable_row", sets: 3, reps: "10-12", rest: 90 },
-    { ex: "db_lateral", sets: 3, reps: "12-20", rest: 60 },
+    { ex: "db_lateral", sets: 2, reps: "12-15", rest: 60 },
     { ex: "pushdown", sets: 2, reps: "12-15", rest: 60 } ] },
   GB: { name: "Glutes B", focus: "Single-leg + glute isolation", items: [
     { ex: "glute_hyper", sets: 3, reps: "12-15", rest: 90 },
-    { ex: "walking_lunge", sets: 3, reps: "10-12 / leg, long steps", rest: 90 },
-    { ex: "b_stance_rdl", sets: 3, reps: "10-12 / leg", rest: 90 },
-    { ex: "glute_kickback", sets: 3, reps: "12-15 / leg", rest: 60 },
-    { ex: "seated_leg_curl", sets: 3, reps: "10-12", rest: 60 } ] },
+    { ex: "walking_lunge", sets: 2, reps: "10 / leg, bodyweight first", rest: 90 },
+    { ex: "b_stance_rdl", sets: 2, reps: "10-12 / leg", rest: 90 },
+    { ex: "glute_kickback", sets: 2, reps: "12-15 / leg", rest: 60 },
+    { ex: "seated_leg_curl", sets: 2, reps: "12-15", rest: 60 } ] },
   UB: { name: "Upper B + glute finisher", focus: "Upper body, then a glute pump", items: [
     { ex: "neutral_pulldown", sets: 3, reps: "10-12", rest: 90 },
     { ex: "machine_chest_press", sets: 3, reps: "10-12", rest: 90 },
-    { ex: "one_arm_db_row", sets: 3, reps: "10-12 / arm", rest: 60 },
+    { ex: "one_arm_db_row", sets: 2, reps: "10-12 / arm", rest: 60 },
     { ex: "reverse_pec_deck", sets: 2, reps: "15", rest: 60 },
-    { ex: "cable_abduction", sets: 2, reps: "15-20 / leg", rest: 45 },
+    { ex: "cable_abduction", sets: 2, reps: "15 / leg", rest: 45 },
     { ex: "glute_bridge", sets: 2, reps: "15-20", rest: 60 } ] },
   GOPT: { name: "Walk + glute pump", focus: "Optional, easy day", items: [
     { ex: "incline_walk", sets: 1, reps: "30 min", rest: 0 },
-    { ex: "band_walk", sets: 3, reps: "15 steps each way", rest: 45 },
-    { ex: "lying_leg_raise", sets: 3, reps: "12", rest: 45 } ] },
+    { ex: "band_walk", sets: 2, reps: "15 steps each way", rest: 45 },
+    { ex: "lying_leg_raise", sets: 3, reps: "10-12", rest: 45 } ] },
   HOME: { name: "Hostel room", focus: "No equipment, 35 min", items: [
     { ex: "deficit_pushup", sets: 3, reps: "to 1 short of failure", rest: 90 },
     { ex: "inverted_row", sets: 3, reps: "8-15", rest: 90 },
