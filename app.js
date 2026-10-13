@@ -1141,7 +1141,7 @@ function renderPlan() {
   const es = p.sessions[ui.editSession];
 
   const mode = `<div class="seg wrap"><button class="${p.mode === "cut" ? "on" : ""}" data-a="mode" data-v="cut">Cut (4-5 days)</button><button class="${p.mode === "term" ? "on" : ""}" data-a="mode" data-v="term">Term (3 days)</button><button class="${p.mode === "glute" ? "on" : ""}" data-a="mode" data-v="glute">Glutes & legs</button></div>
-    <p class="small muted">Cut and Term are the upper/lower and full-body programs. <b>Glutes & legs</b> is the 4-day program for Yashvi: glute-led lifts (hip thrust, RDL, lunges, abduction), moderate thigh work, two upper-body days, and an optional walk day.</p>
+    <p class="small muted">Cut and Term are the upper/lower and full-body programs. <b>Glutes & legs</b> is the 4-day glute-focused program: glute-led lifts (hip thrust, RDL, lunges, abduction), moderate thigh work, two upper-body days, and an optional walk day.</p>
     <div class="grid2"><div class="field"><label>Cut starts</label>${inp("plan.cutStart", p.cutStart, "date", 'data-rerender="1"')}</div><div class="field"><label>Cut ends</label>${inp("plan.cutEnd", p.cutEnd, "date", 'data-rerender="1"')}</div></div>`;
 
   const targets = `<div class="grid2">
@@ -1241,7 +1241,7 @@ function renderPlan() {
   const backup = `<span class="eyebrow">GitHub backup (automatic)</span>
     <p class="small muted">Saves one small file per day to a <b>private</b> GitHub repo, plus a full copy for restoring. Runs when the app opens or closes, at most every 15 minutes. The token stays on this phone and never goes into the backup.</p>
     <div class="field"><label for="ghFolder">Backup folder</label><input id="ghFolder" type="text" value="${esc(gh.folder || "data")}" data-a-change="gh" data-f="folder" autocomplete="off">
-      <span class="small muted">Leave as <code>data</code> on Ronit's phone. On Yashvi's phone use <code>yashvi</code>, so the two never overwrite each other.</span></div>
+      <span class="small muted">Leave as <code>data</code> on the first phone. On a second person's phone use their name (e.g. <code>partner</code>), so the two never overwrite each other.</span></div>
     <div class="field"><label for="ghRepo">Private repo (owner/name)</label><input id="ghRepo" type="text" value="${esc(gh.repo || "")}" data-a-change="gh" data-f="repo" placeholder="your-username/ironcourt-data" autocomplete="off"></div>
     <div class="field"><label for="ghTok">Access token</label><input id="ghTok" type="password" value="${gh.token ? "••••••••" : ""}" data-a-change="gh" data-f="token" placeholder="github_pat_…" autocomplete="off"></div>
     <p class="small ${meta.err ? "" : "muted"}">${meta.err ? `<b>Last attempt failed:</b> ${esc(meta.err)}` : meta.last ? `Last backup: ${new Date(meta.last).toLocaleString("en-IN")}` : "No backup yet."}</p>

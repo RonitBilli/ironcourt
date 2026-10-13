@@ -320,7 +320,7 @@ const SESSIONS = {
     { ex: "reverse_cable_fly", sets: 2, reps: "12-15", rest: 60 },
     { ex: "ab_wheel", sets: 3, reps: "8-12", rest: 60 },
     { ex: "incline_walk", sets: 1, reps: "20 min", rest: 0 } ] },
-  // Glutes & legs program (Yashvi): glute-led lifts, moderate quad work, no exercise twice a week.
+  // Glutes & legs program: glute-led lifts, moderate quad work, no exercise twice a week.
   GA: { name: "Glutes A", focus: "Heavy hip thrust + hinge", items: [
     { ex: "hip_thrust", sets: 4, reps: "6-10", rest: 150 },
     { ex: "rdl", sets: 3, reps: "8-10", rest: 150 },
