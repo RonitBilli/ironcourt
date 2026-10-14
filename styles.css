@@ -489,3 +489,7 @@ code { font: 500 13px ui-monospace, SFMono-Regular, Menlo, monospace; background
 /* ---------- v6: two people on the Train tab ---------- */
 .whoseg { align-self: start; }
 main > .whoseg { justify-self: start; }
+
+/* ---------- v7: meal change sheet, warm-up / cool-down ---------- */
+.swaprow { display: flex; gap: 10px; align-items: center; padding: 10px 12px; background: var(--surface); border-radius: 12px; box-shadow: var(--shadow); }
+details.sec.phase { box-shadow: none; background: var(--surface-2); }
