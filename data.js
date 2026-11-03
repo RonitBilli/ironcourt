@@ -241,6 +241,23 @@ const EXERCISES = {
     cues: ["Pad at the hip crease, toes turned out", "Round the upper back, chin tucked", "Lift by squeezing the glutes, not the lower back"],
     alts: [["glute_bridge", "Bench taken"], ["hip_thrust", "Want heavier"]] },
 
+  // ---- v8 additions: lower abs, side delts, conditioning ----
+  hanging_knee_raise: { name: "Hanging knee raise", muscle: "Abs (lower)", video: "l7OroezzX9k", demo: "RD_A-Z15ER4",
+    cues: ["Dead hang, shoulders pulled down", "Curl the pelvis up so the knees reach the chest", "Lower in 2 seconds, no swinging"],
+    alts: [["reverse_crunch", "No bar or grip gives out"], ["lying_leg_raise", "No equipment"]] },
+  dead_bug: { name: "Dead bug", muscle: "Abs (deep core, lower)", video: "GbSC02oU3To", demo: "o4GKiEoYClI",
+    cues: ["Lower back pressed into the floor the whole time", "Opposite arm and leg reach out slowly", "Breathe out as you reach"],
+    alts: [["plank", "Want something static"]] },
+  cable_upright_row: { name: "Cable upright row (wide grip)", muscle: "Shoulders (side)", video: "MVDNQt5NgKI", demo: "qr3ziolhjvQ",
+    cues: ["Wide grip on a straight bar or rope", "Lead with the elbows, stop at chest height", "Skip it if the shoulder pinches"],
+    alts: [["db_lateral", "Shoulder pinches"], ["machine_lateral", "Cable taken"]] },
+  knee_pushup: { name: "Push-up (knees or full)", muscle: "Chest + triceps", video: "jWxvty2KROs", demo: "mm6_WcoCVTA",
+    cues: ["Hands just wider than shoulders", "Body straight from knees (or feet) to head", "Chest to the floor, push away"],
+    alts: [["machine_chest_press", "Have the machine"]] },
+  bike_intervals: { name: "Bike intervals", muscle: "Cardio (fat burn)", video: "Rh8VswzWDow", demo: "",
+    cues: ["2 min easy to start", "Then 30 s fast, 60 s easy, repeat", "Finish with 1 min easy"],
+    alts: [["incline_walk", "No bike free"]] },
+
   // ---- Calves ----
   standing_calf: { name: "Standing calf raise", muscle: "Calves", video: "SVtg-1loH4c", demo: "N3awlEyTY98",
     cues: ["Pause 2 s at the bottom stretch", "Up onto the big toe", "No bouncing"],
@@ -287,14 +304,14 @@ const SESSIONS = {
   // visceral fat), lifting keeps the muscle, abs get trained 5 times. Legs once a week
   // (squash already loads them), no deadlift variations. Exercise picks follow the top
   // tiers of Jeff Nippard's evidence-based rankings. No exercise appears twice in a week.
-  PUSH: { name: "Push", type: "upper", focus: "Chest, shoulders, triceps + abs", items: [
+  PUSH: { hidden: true, name: "Push", type: "upper", focus: "Chest, shoulders, triceps + abs", items: [
     { ex: "incline_db_press", sets: 3, reps: "8-12", rest: 120 },
     { ex: "machine_chest_press", sets: 3, reps: "8-12", rest: 120 },
     { ex: "seated_cable_fly", sets: 2, reps: "12-15", rest: 75 },
     { ex: "cable_lateral", sets: 3, reps: "12-15", rest: 60 },
     { ex: "oh_cable_tri", sets: 2, reps: "10-12", rest: 60 },
     { ex: "cable_crunch", sets: 3, reps: "10-15", rest: 60 } ] },
-  PULL: { name: "Pull", type: "upper", focus: "Back, rear delts, biceps + abs", items: [
+  PULL: { hidden: true, name: "Pull", type: "upper", focus: "Back, rear delts, biceps + abs", items: [
     { ex: "lat_pulldown", sets: 3, reps: "8-12", rest: 120 },
     { ex: "cs_db_row", sets: 3, reps: "8-12", rest: 120 },
     { ex: "seated_cable_row", sets: 2, reps: "10-12", rest: 90 },
@@ -302,54 +319,141 @@ const SESSIONS = {
     { ex: "incline_db_curl", sets: 2, reps: "10-12", rest: 60 },
     { ex: "hammer_curl", sets: 2, reps: "10-12", rest: 60 },
     { ex: "hanging_leg_raise", sets: 3, reps: "10-15", rest: 60 } ] },
-  LEGS: { name: "Legs + abs", type: "lower", focus: "The one leg day of the week", items: [
+  LEGS: { hidden: true, name: "Legs + abs", type: "lower", focus: "The one leg day of the week", items: [
     { ex: "hack_squat", sets: 3, reps: "8-10", rest: 150 },
     { ex: "leg_ext", sets: 3, reps: "12-15", rest: 75 },
     { ex: "seated_leg_curl", sets: 3, reps: "10-12", rest: 75 },
     { ex: "standing_calf", sets: 3, reps: "12-15", rest: 60 },
     { ex: "ab_wheel", sets: 3, reps: "8-12", rest: 60 } ] },
-  UPPER: { name: "Upper", type: "upper", focus: "Chest, back, shoulders + abs", items: [
+  UPPER: { hidden: true, name: "Upper", type: "upper", focus: "Chest, back, shoulders + abs", items: [
     { ex: "incline_smith_press", sets: 3, reps: "8-10", rest: 120 },
     { ex: "one_arm_pulldown", sets: 3, reps: "10-12", rest: 90 },
     { ex: "machine_shoulder_press", sets: 2, reps: "8-12", rest: 90 },
     { ex: "machine_lateral", sets: 3, reps: "12-15", rest: 60 },
     { ex: "cable_kickback", sets: 2, reps: "12-15", rest: 60 },
     { ex: "decline_crunch", sets: 3, reps: "12-15", rest: 60 } ] },
-  ARMS: { name: "Arms + core", type: "upper", focus: "Optional, skip if tired", items: [
+  ARMS: { hidden: true, name: "Arms + core", type: "upper", focus: "Optional, skip if tired", items: [
     { ex: "bayesian_curl", sets: 3, reps: "10-12", rest: 60 },
     { ex: "pushdown", sets: 3, reps: "10-12", rest: 60 },
     { ex: "preacher_curl", sets: 2, reps: "10-12", rest: 60 },
     { ex: "skullcrusher", sets: 2, reps: "10-12", rest: 60 },
     { ex: "reverse_cable_fly", sets: 2, reps: "15", rest: 45 },
     { ex: "plank", sets: 3, reps: "45 s", rest: 45 } ] },
+  // ===== Ronit, from Nov 2026: belly (lower abs), shoulders, arms. 4 days, no leg day.
+  // Each day: heavy compound first, then supersets (pairs done back to back: same results,
+  // about a third less time - Zhang 2025 meta-analysis), one leg exercise on two days,
+  // and an abs pair that always starts with a lower-ab move. Side delts 3-4x a week.
+  R1: { type: "upper", name: "Shoulders + chest", focus: "Press, side delts, legs, lower abs", items: [
+    { ex: "machine_shoulder_press", sets: 3, reps: "8-10", rest: 120 },
+    { ex: "incline_db_press", sets: 3, reps: "8-12", rest: 120 },
+    { ex: "cable_lateral", sets: 3, reps: "12-15", rest: 0, ss: true },
+    { ex: "reverse_pec_deck", sets: 3, reps: "12-15", rest: 60 },
+    { ex: "leg_press", sets: 3, reps: "10-12", rest: 120 },
+    { ex: "oh_cable_tri", sets: 2, reps: "10-12", rest: 0, ss: true },
+    { ex: "bayesian_curl", sets: 2, reps: "10-12", rest: 60 },
+    { ex: "hanging_knee_raise", sets: 3, reps: "10-15", rest: 0, ss: true },
+    { ex: "cable_crunch", sets: 3, reps: "12-15", rest: 60 } ] },
+  R2: { type: "upper", name: "Back + arms", focus: "Width, biceps, triceps, lower abs", items: [
+    { ex: "lat_pulldown", sets: 3, reps: "8-12", rest: 120 },
+    { ex: "cs_db_row", sets: 3, reps: "8-12", rest: 120 },
+    { ex: "db_lateral", sets: 3, reps: "15-20", rest: 0, ss: true },
+    { ex: "reverse_cable_fly", sets: 2, reps: "15", rest: 45 },
+    { ex: "incline_db_curl", sets: 3, reps: "10-12", rest: 0, ss: true },
+    { ex: "pushdown", sets: 3, reps: "10-12", rest: 60 },
+    { ex: "hammer_curl", sets: 2, reps: "12", rest: 60 },
+    { ex: "reverse_crunch", sets: 3, reps: "12-15", rest: 0, ss: true },
+    { ex: "ab_wheel", sets: 3, reps: "8-12", rest: 60 } ] },
+  R3: { type: "upper", name: "Shoulders + chest 2", focus: "Press, side delts, hamstrings, lower abs", items: [
+    { ex: "incline_smith_press", sets: 3, reps: "6-10", rest: 150 },
+    { ex: "db_shoulder_press", sets: 3, reps: "8-12", rest: 120 },
+    { ex: "machine_lateral", sets: 3, reps: "12-15", rest: 0, ss: true },
+    { ex: "seated_cable_fly", sets: 2, reps: "12-15", rest: 60 },
+    { ex: "seated_leg_curl", sets: 3, reps: "10-12", rest: 75 },
+    { ex: "skullcrusher", sets: 2, reps: "10-12", rest: 0, ss: true },
+    { ex: "preacher_curl", sets: 2, reps: "10-12", rest: 60 },
+    { ex: "lying_leg_raise", sets: 3, reps: "12-15", rest: 0, ss: true },
+    { ex: "decline_crunch", sets: 3, reps: "12-15", rest: 60 } ] },
+  R4: { type: "upper", name: "Back + shoulders + arms", focus: "Rows, upright row, arms, lower abs", items: [
+    { ex: "one_arm_pulldown", sets: 3, reps: "10-12", rest: 90 },
+    { ex: "seated_cable_row", sets: 3, reps: "10-12", rest: 90 },
+    { ex: "cable_upright_row", sets: 3, reps: "12-15", rest: 0, ss: true },
+    { ex: "rear_delt_db_fly", sets: 2, reps: "15", rest: 45 },
+    { ex: "cable_kickback", sets: 2, reps: "12-15", rest: 0, ss: true },
+    { ex: "db_curl", sets: 2, reps: "12", rest: 60 },
+    { ex: "hanging_leg_raise", sets: 3, reps: "8-12", rest: 0, ss: true },
+    { ex: "dead_bug", sets: 3, reps: "10 / side", rest: 60 } ] },
+
+  // ===== Yashvi, from Nov 2026: lose fat first, tone belly, slimmer thighs, firm glutes,
+  // chest + upper back for a lifted look. Supersets keep the heart rate up; every day ends
+  // with 10-15 min of cardio, which is what burns fat and helps the gut.
+  Y1: { type: "glute", name: "Glutes + chest", focus: "Hip thrust, chest, glutes, lower abs, walk", items: [
+    { ex: "hip_thrust", sets: 3, reps: "8-12", rest: 120 },
+    { ex: "machine_chest_press", sets: 3, reps: "10-12", rest: 0, ss: true },
+    { ex: "seated_cable_row", sets: 3, reps: "10-12", rest: 75 },
+    { ex: "hip_abduction", sets: 3, reps: "15-20", rest: 0, ss: true },
+    { ex: "glute_kickback", sets: 3, reps: "12-15 / leg", rest: 45 },
+    { ex: "reverse_crunch", sets: 3, reps: "12", rest: 0, ss: true },
+    { ex: "dead_bug", sets: 3, reps: "10 / side", rest: 45 },
+    { ex: "incline_walk", sets: 1, reps: "12 min, incline 8-10", rest: 0 } ] },
+  Y2: { type: "upper", name: "Upper body + core", focus: "Back, chest, shoulders, arms, abs, bike", items: [
+    { ex: "lat_pulldown", sets: 3, reps: "10-12", rest: 90 },
+    { ex: "incline_db_press", sets: 3, reps: "10-12", rest: 0, ss: true },
+    { ex: "cs_db_row", sets: 3, reps: "10-12", rest: 75 },
+    { ex: "db_lateral", sets: 3, reps: "12-15", rest: 0, ss: true },
+    { ex: "reverse_pec_deck", sets: 2, reps: "15", rest: 45 },
+    { ex: "pushdown", sets: 2, reps: "12-15", rest: 0, ss: true },
+    { ex: "db_curl", sets: 2, reps: "12", rest: 45 },
+    { ex: "lying_leg_raise", sets: 3, reps: "12", rest: 0, ss: true },
+    { ex: "plank", sets: 3, reps: "30-45 s", rest: 45 },
+    { ex: "bike_intervals", sets: 1, reps: "10 min", rest: 0 } ] },
+  Y3: { type: "glute", name: "Glutes + hamstrings", focus: "Hinge, glutes, back of thighs, abs, walk", items: [
+    { ex: "db_rdl", sets: 3, reps: "10-12", rest: 90 },
+    { ex: "glute_hyper", sets: 3, reps: "12-15", rest: 0, ss: true },
+    { ex: "seated_leg_curl", sets: 3, reps: "12", rest: 60 },
+    { ex: "reverse_lunge", sets: 2, reps: "10 / leg", rest: 75 },
+    { ex: "cable_abduction", sets: 2, reps: "15 / leg", rest: 0, ss: true },
+    { ex: "band_walk", sets: 2, reps: "15 steps each way", rest: 45 },
+    { ex: "cable_crunch", sets: 3, reps: "12-15", rest: 45 },
+    { ex: "incline_walk", sets: 1, reps: "15 min, incline 8-10", rest: 0 } ] },
+  Y4: { type: "full", name: "Full-body burn", focus: "Step-ups, push-ups, rows, glutes, abs, walk", items: [
+    { ex: "step_up", sets: 3, reps: "10 / leg", rest: 75 },
+    { ex: "knee_pushup", sets: 3, reps: "8-12", rest: 0, ss: true },
+    { ex: "one_arm_db_row", sets: 3, reps: "12 / arm", rest: 60 },
+    { ex: "machine_shoulder_press", sets: 2, reps: "12", rest: 0, ss: true },
+    { ex: "reverse_cable_fly", sets: 2, reps: "15", rest: 45 },
+    { ex: "glute_bridge", sets: 3, reps: "15-20", rest: 45 },
+    { ex: "hanging_knee_raise", sets: 3, reps: "8-10", rest: 0, ss: true },
+    { ex: "decline_crunch", sets: 2, reps: "12", rest: 45 },
+    { ex: "incline_walk", sets: 1, reps: "15 min, incline 8-10", rest: 0 } ] },
+
   // Glutes & legs program for a first-time lifter: fewer sets, higher reps, form first.
   // Glute-led lifts, moderate thigh work, no exercise twice in a week.
-  GA: { type: "glute", name: "Glutes A", focus: "Hip thrust + hinge", items: [
+  GA: { hidden: true, type: "glute", name: "Glutes A", focus: "Hip thrust + hinge", items: [
     { ex: "hip_thrust", sets: 3, reps: "10-12", rest: 120 },
     { ex: "db_rdl", sets: 3, reps: "10-12", rest: 120 },
     { ex: "bss", sets: 2, reps: "10-12 / leg, lean forward", rest: 90 },
     { ex: "hip_abduction", sets: 3, reps: "15-20", rest: 60 },
     { ex: "plank", sets: 3, reps: "30 s", rest: 45 } ] },
-  UA: { type: "upper", name: "Upper A", focus: "Back + shoulders", items: [
+  UA: { hidden: true, type: "upper", name: "Upper A", focus: "Back + shoulders", items: [
     { ex: "lat_pulldown", sets: 3, reps: "10-12", rest: 90 },
     { ex: "incline_db_press", sets: 3, reps: "10-12", rest: 90 },
     { ex: "seated_cable_row", sets: 3, reps: "10-12", rest: 90 },
     { ex: "db_lateral", sets: 2, reps: "12-15", rest: 60 },
     { ex: "pushdown", sets: 2, reps: "12-15", rest: 60 } ] },
-  GB: { type: "glute", name: "Glutes B", focus: "Single-leg + glute isolation", items: [
+  GB: { hidden: true, type: "glute", name: "Glutes B", focus: "Single-leg + glute isolation", items: [
     { ex: "glute_hyper", sets: 3, reps: "12-15", rest: 90 },
     { ex: "walking_lunge", sets: 2, reps: "10 / leg, bodyweight first", rest: 90 },
     { ex: "b_stance_rdl", sets: 2, reps: "10-12 / leg", rest: 90 },
     { ex: "glute_kickback", sets: 2, reps: "12-15 / leg", rest: 60 },
     { ex: "seated_leg_curl", sets: 2, reps: "12-15", rest: 60 } ] },
-  UB: { type: "upper", name: "Upper B + glute finisher", focus: "Upper body, then a glute pump", items: [
+  UB: { hidden: true, type: "upper", name: "Upper B + glute finisher", focus: "Upper body, then a glute pump", items: [
     { ex: "neutral_pulldown", sets: 3, reps: "10-12", rest: 90 },
     { ex: "machine_chest_press", sets: 3, reps: "10-12", rest: 90 },
     { ex: "one_arm_db_row", sets: 2, reps: "10-12 / arm", rest: 60 },
     { ex: "reverse_pec_deck", sets: 2, reps: "15", rest: 60 },
     { ex: "cable_abduction", sets: 2, reps: "15 / leg", rest: 45 },
     { ex: "glute_bridge", sets: 2, reps: "15-20", rest: 60 } ] },
-  GOPT: { type: "glute", name: "Walk + glute pump", focus: "Optional, easy day", items: [
+  GOPT: { hidden: true, type: "glute", name: "Walk + glute pump", focus: "Optional, easy day", items: [
     { ex: "incline_walk", sets: 1, reps: "30 min", rest: 0 },
     { ex: "band_walk", sets: 2, reps: "15 steps each way", rest: 45 },
     { ex: "lying_leg_raise", sets: 3, reps: "10-12", rest: 45 } ] },
@@ -387,43 +491,11 @@ const SESSIONS = {
     { ex: "ab_wheel", sets: 3, reps: "8-12", rest: 60 } ] },
 };
 
-// Warm-up: raise heart rate, mobilise the joints you'll use, then ramp up to working weight.
-// Cool-down: easy walk plus a few 30 s stretches. It won't cut soreness (Van Hooren & Peake
-// 2018) but brings the heart rate down and keeps the hips and shoulders loose.
-const RAMP = { n: "Ramp-up sets on the first exercise", d: "About 50% of working weight × 10, then 75% × 5, then start", v: "" };
-const CARDIO = { n: "Easy cardio: bike, cross-trainer or incline walk", d: "3-5 min, until lightly warm", v: "NAsObfFJXvE" };
-const WARMUPS = {
-  upper: [CARDIO,
-    { n: "Arm circles", d: "10 forward, 10 back", v: "ndmSvkEdNQQ" },
-    { n: "Band pull-aparts", d: "2 × 15", v: "eZwnwWMkEL4" },
-    { n: "Scap push-ups", d: "10 slow reps", v: "huGj4aBk9C4" }, RAMP],
-  lower: [CARDIO,
-    { n: "Leg swings", d: "10 forward-back and 10 side-to-side, each leg", v: "difYoBtZi2s" },
-    { n: "World's greatest stretch", d: "3 per side", v: "-CiWQ2IvY34" },
-    { n: "Bodyweight squats", d: "10 slow reps", v: "l83R5PblSMA" }, RAMP],
-  glute: [CARDIO,
-    { n: "Leg swings", d: "10 forward-back and 10 side-to-side, each leg", v: "difYoBtZi2s" },
-    { n: "World's greatest stretch", d: "3 per side", v: "-CiWQ2IvY34" },
-    { n: "Bodyweight glute bridges", d: "15, squeeze 2 s at the top", v: "L9KZfxT654Y" },
-    { n: "Lateral band walk", d: "10 steps each way", v: "M5uxEQH5BUM" }, RAMP],
-  full: [CARDIO,
-    { n: "Arm circles", d: "10 forward, 10 back", v: "ndmSvkEdNQQ" },
-    { n: "Leg swings", d: "10 each way, each leg", v: "difYoBtZi2s" },
-    { n: "World's greatest stretch", d: "3 per side", v: "-CiWQ2IvY34" }],
-};
-const WALK = { n: "Easy walk or bike", d: "3 min, let your breathing settle", v: "" };
-const COOLDOWNS = {
-  upper: [WALK,
-    { n: "Doorway chest stretch", d: "30 s per side", v: "CEQMx4zFwYs" },
-    { n: "Child's pose lat stretch", d: "30 s per side", v: "2pkLUbN34GI" },
-    { n: "Cross-body shoulder stretch", d: "30 s per side", v: "aIq0fLi8iak" }],
-  lower: [WALK,
-    { n: "Half-kneeling hip flexor stretch", d: "30 s per side", v: "ktgtEWGhFd8" },
-    { n: "Figure-4 glute stretch", d: "30 s per side", v: "nj1-GzbAauI" },
-    { n: "Hamstring stretch", d: "30 s per side", v: "qQ26F282VRo" }],
-};
-COOLDOWNS.glute = COOLDOWNS.lower;
-COOLDOWNS.full = [WALK, COOLDOWNS.upper[1], COOLDOWNS.lower[1], COOLDOWNS.lower[2]];
+// Warm-up and cool-down: plain standing moves, same for everyone, no equipment.
+// The cool-down ends with two moves that may ease bloating, and a walk after meals helps
+// digestion; regular cardio itself shifts the gut microbiome (Allen 2018).
+const WARMUP = ["Arm circles, 10 each way", "Shoulder rolls, 10", "Arm swings across the chest, 10", "Torso twists, 10", "Leg swings, 10 each leg", "Bodyweight squats, 10", "Then 1 light set of your first exercise"];
+const COOLDOWN = ["Chest stretch, hands clasped behind you, 20 s", "Overhead triceps stretch, 20 s each arm", "Cross-body shoulder stretch, 20 s each arm", "Standing quad stretch, 20 s each leg", "Toe reach for hamstrings, 20 s", "Knees-to-chest hug on the floor, 30 s (eases bloating)", "Seated twist, 20 s each side (helps digestion)"];
 
 // Meal slots. Each slot has interchangeable options; the first is the default.
 const MEALS = [
@@ -493,9 +565,9 @@ const DEFAULT_PLAN = {
     { time: "01:30", title: "Sleep (8 h)", kind: "habit" },
   ],
   rotations: {
-    cut: ["PUSH", "PULL", "REST", "LEGS", "UPPER", "ARMS", "REST"],
+    cut: ["R1", "R2", "R3", "R4"],
     term: ["FBA", "FBB", "FBC"],
-    glute: ["GA", "UA", "REST", "GB", "UB", "GOPT", "REST"],
+    glute: ["Y1", "Y2", "Y3", "Y4"],
   },
   sessions: SESSIONS,
   exercises: EXERCISES,
