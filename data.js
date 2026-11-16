@@ -343,7 +343,7 @@ const SESSIONS = {
   // Each day: heavy compound first, then supersets (pairs done back to back: same results,
   // about a third less time - Zhang 2025 meta-analysis), one leg exercise on two days,
   // and an abs pair that always starts with a lower-ab move. Side delts 3-4x a week.
-  R1: { type: "upper", name: "Shoulders + chest", focus: "Press, side delts, legs, lower abs", items: [
+  R1: { hidden: true, type: "upper", name: "Shoulders + chest", focus: "Press, side delts, legs, lower abs", items: [
     { ex: "machine_shoulder_press", sets: 3, reps: "8-10", rest: 120 },
     { ex: "incline_db_press", sets: 3, reps: "8-12", rest: 120 },
     { ex: "cable_lateral", sets: 3, reps: "12-15", rest: 0, ss: true },
@@ -353,7 +353,7 @@ const SESSIONS = {
     { ex: "bayesian_curl", sets: 2, reps: "10-12", rest: 60 },
     { ex: "hanging_knee_raise", sets: 3, reps: "10-15", rest: 0, ss: true },
     { ex: "cable_crunch", sets: 3, reps: "12-15", rest: 60 } ] },
-  R2: { type: "upper", name: "Back + arms", focus: "Width, biceps, triceps, lower abs", items: [
+  R2: { hidden: true, type: "upper", name: "Back + arms", focus: "Width, biceps, triceps, lower abs", items: [
     { ex: "lat_pulldown", sets: 3, reps: "8-12", rest: 120 },
     { ex: "cs_db_row", sets: 3, reps: "8-12", rest: 120 },
     { ex: "db_lateral", sets: 3, reps: "15-20", rest: 0, ss: true },
@@ -363,7 +363,7 @@ const SESSIONS = {
     { ex: "hammer_curl", sets: 2, reps: "12", rest: 60 },
     { ex: "reverse_crunch", sets: 3, reps: "12-15", rest: 0, ss: true },
     { ex: "ab_wheel", sets: 3, reps: "8-12", rest: 60 } ] },
-  R3: { type: "upper", name: "Shoulders + chest 2", focus: "Press, side delts, hamstrings, lower abs", items: [
+  R3: { hidden: true, type: "upper", name: "Shoulders + chest 2", focus: "Press, side delts, hamstrings, lower abs", items: [
     { ex: "incline_smith_press", sets: 3, reps: "6-10", rest: 150 },
     { ex: "db_shoulder_press", sets: 3, reps: "8-12", rest: 120 },
     { ex: "machine_lateral", sets: 3, reps: "12-15", rest: 0, ss: true },
@@ -373,7 +373,7 @@ const SESSIONS = {
     { ex: "preacher_curl", sets: 2, reps: "10-12", rest: 60 },
     { ex: "lying_leg_raise", sets: 3, reps: "12-15", rest: 0, ss: true },
     { ex: "decline_crunch", sets: 3, reps: "12-15", rest: 60 } ] },
-  R4: { type: "upper", name: "Back + shoulders + arms", focus: "Rows, upright row, arms, lower abs", items: [
+  R4: { hidden: true, type: "upper", name: "Back + shoulders + arms", focus: "Rows, upright row, arms, lower abs", items: [
     { ex: "one_arm_pulldown", sets: 3, reps: "10-12", rest: 90 },
     { ex: "seated_cable_row", sets: 3, reps: "10-12", rest: 90 },
     { ex: "cable_upright_row", sets: 3, reps: "12-15", rest: 0, ss: true },
@@ -386,7 +386,7 @@ const SESSIONS = {
   // ===== Yashvi, from Nov 2026: lose fat first, tone belly, slimmer thighs, firm glutes,
   // chest + upper back for a lifted look. Supersets keep the heart rate up; every day ends
   // with 10-15 min of cardio, which is what burns fat and helps the gut.
-  Y1: { type: "glute", name: "Glutes + chest", focus: "Hip thrust, chest, glutes, lower abs, walk", items: [
+  Y1: { hidden: true, type: "glute", name: "Glutes + chest", focus: "Hip thrust, chest, glutes, lower abs, walk", items: [
     { ex: "hip_thrust", sets: 3, reps: "8-12", rest: 120 },
     { ex: "machine_chest_press", sets: 3, reps: "10-12", rest: 0, ss: true },
     { ex: "seated_cable_row", sets: 3, reps: "10-12", rest: 75 },
@@ -395,7 +395,7 @@ const SESSIONS = {
     { ex: "reverse_crunch", sets: 3, reps: "12", rest: 0, ss: true },
     { ex: "dead_bug", sets: 3, reps: "10 / side", rest: 45 },
     { ex: "incline_walk", sets: 1, reps: "12 min, incline 8-10", rest: 0 } ] },
-  Y2: { type: "upper", name: "Upper body + core", focus: "Back, chest, shoulders, arms, abs, bike", items: [
+  Y2: { hidden: true, type: "upper", name: "Upper body + core", focus: "Back, chest, shoulders, arms, abs, bike", items: [
     { ex: "lat_pulldown", sets: 3, reps: "10-12", rest: 90 },
     { ex: "incline_db_press", sets: 3, reps: "10-12", rest: 0, ss: true },
     { ex: "cs_db_row", sets: 3, reps: "10-12", rest: 75 },
@@ -406,7 +406,7 @@ const SESSIONS = {
     { ex: "lying_leg_raise", sets: 3, reps: "12", rest: 0, ss: true },
     { ex: "plank", sets: 3, reps: "30-45 s", rest: 45 },
     { ex: "bike_intervals", sets: 1, reps: "10 min", rest: 0 } ] },
-  Y3: { type: "glute", name: "Glutes + hamstrings", focus: "Hinge, glutes, back of thighs, abs, walk", items: [
+  Y3: { hidden: true, type: "glute", name: "Glutes + hamstrings", focus: "Hinge, glutes, back of thighs, abs, walk", items: [
     { ex: "db_rdl", sets: 3, reps: "10-12", rest: 90 },
     { ex: "glute_hyper", sets: 3, reps: "12-15", rest: 0, ss: true },
     { ex: "seated_leg_curl", sets: 3, reps: "12", rest: 60 },
@@ -415,7 +415,7 @@ const SESSIONS = {
     { ex: "band_walk", sets: 2, reps: "15 steps each way", rest: 45 },
     { ex: "cable_crunch", sets: 3, reps: "12-15", rest: 45 },
     { ex: "incline_walk", sets: 1, reps: "15 min, incline 8-10", rest: 0 } ] },
-  Y4: { type: "full", name: "Full-body burn", focus: "Step-ups, push-ups, rows, glutes, abs, walk", items: [
+  Y4: { hidden: true, type: "full", name: "Full-body burn", focus: "Step-ups, push-ups, rows, glutes, abs, walk", items: [
     { ex: "step_up", sets: 3, reps: "10 / leg", rest: 75 },
     { ex: "knee_pushup", sets: 3, reps: "8-12", rest: 0, ss: true },
     { ex: "one_arm_db_row", sets: 3, reps: "12 / arm", rest: 60 },
@@ -425,6 +425,78 @@ const SESSIONS = {
     { ex: "hanging_knee_raise", sets: 3, reps: "8-10", rest: 0, ss: true },
     { ex: "decline_crunch", sets: 2, reps: "12", rest: 45 },
     { ex: "incline_walk", sets: 1, reps: "15 min, incline 8-10", rest: 0 } ] },
+
+  // ===== Programmes from 15 Nov 2026. Built from five weeks of logs: about two workouts a
+  // week, sessions of 50-90 minutes, and whatever sat at the end (abs, cardio) skipped.
+  // So: three sessions each, about 45 minutes, the priority work FIRST (exercises done first
+  // gain the most - Simao 2012), every block a back-to-back pair (same growth, about a third
+  // less time - Zhang 2025; Iversen 2021 on time-efficient training). Items marked full are
+  // left out of the quick version, which also drops to two rounds.
+  // Ronit: lower abs open every session, a side-delt pair every session (4 sets, 12 a week), arms every session,
+  // one leg move on two of the three days, no deadlifts.
+  RA: { type: "upper", name: "Upper A", focus: "Shoulder press, lats, side delts, arms", items: [
+    { ex: "reverse_crunch", sets: 3, reps: "12-15", rest: 0, ss: true },
+    { ex: "cable_crunch", sets: 2, reps: "12-15", rest: 45 },
+    { ex: "machine_shoulder_press", sets: 3, reps: "8-10", rest: 0, ss: true },
+    { ex: "lat_pulldown", sets: 3, reps: "8-12", rest: 75 },
+    { ex: "cable_lateral", sets: 4, reps: "12-15", rest: 0, ss: true },
+    { ex: "reverse_cable_fly", sets: 2, reps: "12-15", rest: 45 },
+    { ex: "leg_press", sets: 2, reps: "10-12", rest: 75, full: true },
+    { ex: "oh_cable_tri", sets: 2, reps: "10-12", rest: 0, ss: true },
+    { ex: "bayesian_curl", sets: 2, reps: "10-12", rest: 45 } ] },
+  RB: { type: "upper", name: "Upper B", focus: "Incline press, rows, side delts, arms", items: [
+    { ex: "lying_leg_raise", sets: 3, reps: "10-15", rest: 0, ss: true },
+    { ex: "ab_wheel", sets: 2, reps: "6-10", rest: 45 },
+    { ex: "incline_db_press", sets: 3, reps: "8-12", rest: 0, ss: true },
+    { ex: "seated_cable_row", sets: 3, reps: "8-12", rest: 75 },
+    { ex: "db_lateral", sets: 4, reps: "12-20", rest: 0, ss: true },
+    { ex: "rear_delt_db_fly", sets: 2, reps: "12-15", rest: 45 },
+    { ex: "incline_db_curl", sets: 3, reps: "10-12", rest: 0, ss: true },
+    { ex: "oh_db_tri", sets: 3, reps: "10-12", rest: 45 } ] },
+  RC: { type: "upper", name: "Upper C", focus: "Incline bar press, pulldown, side delts, arms", items: [
+    { ex: "hanging_knee_raise", sets: 3, reps: "8-12", rest: 0, ss: true },
+    { ex: "decline_crunch", sets: 2, reps: "12-15", rest: 45 },
+    { ex: "incline_bb_press", sets: 3, reps: "6-10", rest: 0, ss: true },
+    { ex: "neutral_pulldown", sets: 3, reps: "10-12", rest: 75 },
+    { ex: "machine_lateral", sets: 4, reps: "12-15", rest: 0, ss: true },
+    { ex: "reverse_pec_deck", sets: 2, reps: "12-15", rest: 45 },
+    { ex: "seated_leg_curl", sets: 2, reps: "10-12", rest: 60, full: true },
+    { ex: "preacher_curl", sets: 2, reps: "10-12", rest: 0, ss: true },
+    { ex: "pushdown", sets: 2, reps: "10-12", rest: 45 } ] },
+  // Yashvi: fat loss first. The walk comes first so it cannot be skipped, then a core pair,
+  // then big glute / hamstring lifts paired with chest and back (bust and posture). Thigh
+  // work is glute and hamstring led. Machines she already uses.
+  YA: { type: "full", name: "Full body A", focus: "Glutes, chest, back, core", items: [
+    { ex: "incline_walk", sets: 1, reps: "8 min, incline 6-10", rest: 0 },
+    { ex: "reverse_crunch", sets: 3, reps: "10-12", rest: 0, ss: true },
+    { ex: "dead_bug", sets: 2, reps: "8 / side", rest: 45 },
+    { ex: "glute_hyper", sets: 3, reps: "12-15", rest: 0, ss: true },
+    { ex: "machine_chest_press", sets: 3, reps: "10-12", rest: 60 },
+    { ex: "hip_abduction", sets: 3, reps: "15-20", rest: 0, ss: true },
+    { ex: "lat_pulldown", sets: 3, reps: "10-12", rest: 60 },
+    { ex: "machine_lateral", sets: 2, reps: "12-15", rest: 0, ss: true },
+    { ex: "pushdown", sets: 2, reps: "12-15", rest: 45 } ] },
+  YB: { type: "full", name: "Full body B", focus: "Hamstrings, back, upper chest, core", items: [
+    { ex: "incline_walk", sets: 1, reps: "8 min, incline 6-10", rest: 0 },
+    { ex: "lying_leg_raise", sets: 3, reps: "10-12", rest: 0, ss: true },
+    { ex: "plank", sets: 2, reps: "30-45 s", rest: 45 },
+    { ex: "db_rdl", sets: 3, reps: "10-12", rest: 0, ss: true },
+    { ex: "seated_cable_row", sets: 3, reps: "10-12", rest: 60 },
+    { ex: "seated_leg_curl", sets: 3, reps: "12-15", rest: 0, ss: true },
+    { ex: "incline_db_press", sets: 3, reps: "10-12", rest: 60 },
+    { ex: "reverse_pec_deck", sets: 2, reps: "12-15", rest: 0, ss: true },
+    { ex: "db_curl", sets: 2, reps: "10-12", rest: 45 } ] },
+  YC: { type: "full", name: "Full body C", focus: "Glutes, legs, shoulders, core", items: [
+    { ex: "incline_walk", sets: 1, reps: "8 min, incline 6-10", rest: 0 },
+    { ex: "cable_crunch", sets: 3, reps: "12-15", rest: 0, ss: true },
+    { ex: "dead_bug", sets: 2, reps: "8 / side", rest: 45 },
+    { ex: "reverse_lunge", sets: 3, reps: "10 / leg", rest: 0, ss: true },
+    { ex: "neutral_pulldown", sets: 3, reps: "10-12", rest: 60 },
+    { ex: "glute_bridge", sets: 3, reps: "15-20", rest: 0, ss: true },
+    { ex: "knee_pushup", sets: 3, reps: "8-12", rest: 60 },
+    { ex: "hip_abduction", sets: 2, reps: "15-20", rest: 0, ss: true },
+    { ex: "machine_shoulder_press", sets: 2, reps: "10-12", rest: 45 },
+    { ex: "bike_intervals", sets: 1, reps: "8 min", rest: 0, full: true } ] },
 
   // Glutes & legs program for a first-time lifter: fewer sets, higher reps, form first.
   // Glute-led lifts, moderate thigh work, no exercise twice in a week.
@@ -466,7 +538,7 @@ const SESSIONS = {
     { ex: "slider_curl", sets: 2, reps: "10-15", rest: 60 },
     { ex: "diamond_pushup", sets: 2, reps: "to 1 short of failure", rest: 60 },
     { ex: "plank", sets: 3, reps: "45 s", rest: 45 } ] },
-  FBA: { type: "upper", name: "Term upper A", focus: "Term mode", items: [
+  FBA: { hidden: true, type: "upper", name: "Term upper A", focus: "Term mode", items: [
     { ex: "incline_db_press", sets: 3, reps: "8-12", rest: 120 },
     { ex: "lat_pulldown", sets: 3, reps: "8-12", rest: 120 },
     { ex: "cs_db_row", sets: 3, reps: "8-12", rest: 120 },
@@ -474,13 +546,13 @@ const SESSIONS = {
     { ex: "oh_cable_tri", sets: 2, reps: "10-12", rest: 60 },
     { ex: "bayesian_curl", sets: 2, reps: "10-12", rest: 60 },
     { ex: "cable_crunch", sets: 3, reps: "10-15", rest: 60 } ] },
-  FBB: { type: "lower", name: "Term legs + abs", focus: "Term mode", items: [
+  FBB: { hidden: true, type: "lower", name: "Term legs + abs", focus: "Term mode", items: [
     { ex: "hack_squat", sets: 3, reps: "8-10", rest: 150 },
     { ex: "leg_ext", sets: 3, reps: "12-15", rest: 75 },
     { ex: "seated_leg_curl", sets: 3, reps: "10-12", rest: 75 },
     { ex: "standing_calf", sets: 3, reps: "12-15", rest: 60 },
     { ex: "hanging_leg_raise", sets: 3, reps: "10-15", rest: 60 } ] },
-  FBC: { type: "upper", name: "Term upper B", focus: "Term mode", items: [
+  FBC: { hidden: true, type: "upper", name: "Term upper B", focus: "Term mode", items: [
     { ex: "machine_chest_press", sets: 3, reps: "8-12", rest: 120 },
     { ex: "one_arm_pulldown", sets: 3, reps: "10-12", rest: 90 },
     { ex: "seated_cable_row", sets: 3, reps: "10-12", rest: 90 },
@@ -491,11 +563,10 @@ const SESSIONS = {
     { ex: "ab_wheel", sets: 3, reps: "8-12", rest: 60 } ] },
 };
 
-// Warm-up and cool-down: plain standing moves, same for everyone, no equipment.
-// The cool-down ends with two moves that may ease bloating, and a walk after meals helps
-// digestion; regular cardio itself shifts the gut microbiome (Allen 2018).
-const WARMUP = ["Arm circles, 10 each way", "Shoulder rolls, 10", "Arm swings across the chest, 10", "Torso twists, 10", "Leg swings, 10 each leg", "Bodyweight squats, 10", "Then 1 light set of your first exercise"];
-const COOLDOWN = ["Chest stretch, hands clasped behind you, 20 s", "Overhead triceps stretch, 20 s each arm", "Cross-body shoulder stretch, 20 s each arm", "Standing quad stretch, 20 s each leg", "Toe reach for hamstrings, 20 s", "Knees-to-chest hug on the floor, 30 s (eases bloating)", "Seated twist, 20 s each side (helps digestion)"];
+// Warm-up and cool-down: short, standing, nothing to tick. A general warm-up adds little
+// when time is short (Iversen 2021); one light set of the first lift does the job.
+const WARMUP = ["Arm circles and shoulder rolls, 10 each", "Leg swings, 10 each leg", "One light set of your first exercise before the real sets"];
+const COOLDOWN = ["Chest stretch, hands clasped behind you, 20 s", "Cross-body shoulder stretch, 20 s each arm", "Toe reach for hamstrings, 20 s", "Knees-to-chest hug on the floor, 30 s (eases bloating)", "Seated twist, 20 s each side (helps digestion)"];
 
 // Meal slots. Each slot has interchangeable options; the first is the default.
 const MEALS = [
@@ -565,9 +636,9 @@ const DEFAULT_PLAN = {
     { time: "01:30", title: "Sleep (8 h)", kind: "habit" },
   ],
   rotations: {
-    cut: ["R1", "R2", "R3", "R4"],
-    term: ["FBA", "FBB", "FBC"],
-    glute: ["Y1", "Y2", "Y3", "Y4"],
+    cut: ["RA", "RB", "RC"],
+    term: ["RA", "RB", "RC"],
+    glute: ["YA", "YB", "YC"],
   },
   sessions: SESSIONS,
   exercises: EXERCISES,

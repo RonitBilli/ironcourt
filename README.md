@@ -1,16 +1,26 @@
-# Ironcourt
+# Infinity
 
-Personal training and diet app: daily schedule, workout logging with embedded
-form videos and equipment swaps, Indian meal plan with a daily veg meal, party
-mode, progress tracking. Everything is editable in the Plan tab.
+Training, food and kitchen app for two people on one phone: three short workouts a
+week each with one-tap set logging, food logging by tapping usuals or typing, the
+cook's weekly menu with Hinglish messages and groceries, class calendar, progress.
+Everything is editable in Settings (the sliders icon, top right).
 
 ## Files
 
+Plain scripts loaded in this order; they share one global scope.
+
 | File | What it holds |
 |---|---|
-| `data.js` | Default content: exercise library (videos, cues, alternatives), sessions, meals, foods, schedule, targets |
-| `app.js` | The app. Storage sits behind `Store` so a native build or a synced backend can replace localStorage later |
-| `styles.css` | Look and feel (light + dark) |
+| `data.js` | Default content: exercise library (videos, cues, alternatives), sessions, meals, schedule, targets |
+| `food.js`, `fooddb.js` | The cook's dishes and add-ons; the 238-item food bank |
+| `core.js` | Storage (`Store`), migrations, dates, shared helpers, header, render, event wiring, base actions |
+| `train.js` | Progression, workout flow, the Train tab, rest timer, exercise swaps |
+| `eat.js` | Food log: usuals, the plain-language parser, add sheet, party mode |
+| `kitchen.js` | Cook planner: week menu, messages, groceries |
+| `screens.js` | Today, Progress (heat map, strength, check-in, photos), Settings |
+| `sync.js` | Undo, file and GitHub backup, start-up |
+| `native.js`, `calendar.js` | Native-shell bridge (unused on the web) and the Outlook class calendar |
+| `styles.css` | Look and feel (light + dark). Lime = do this / done; blue = Ronit, pink = Yashvi |
 | `sw.js`, `manifest.webmanifest`, `icons/` | Installable web app: home-screen icon, full screen, works offline (videos need internet) |
 
 No build step and no dependencies. Serve the folder over HTTPS.
@@ -19,12 +29,12 @@ No build step and no dependencies. Serve the folder over HTTPS.
 
 1. Open the hosted URL in **Safari** (not Chrome).
 2. Share button → **Add to Home Screen**.
-3. Open it from the home-screen icon. Data stays on the phone; export a backup from Plan → Backup every week or two.
+3. Open it from the home-screen icon. Data stays on the phone; export a backup from Settings → Backup every week or two.
 
 ## Updating content
 
 Edit `data.js` for defaults that should apply on a fresh install. Changes made
-in the app's Plan tab are stored on the phone and are not overwritten by
+in the app's Settings are stored on the phone and are not overwritten by
 updates; new exercises and sessions added to `data.js` are merged in on next
 open.
 

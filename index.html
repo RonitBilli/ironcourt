@@ -4,18 +4,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Infinity</title>
-<meta name="description" content="Daily plan, training log and diet tracker">
-<meta name="theme-color" content="#F2F4F3" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#0F1513" media="(prefers-color-scheme: dark)">
+<meta name="description" content="Training, food and kitchen planner for two">
+<meta name="theme-color" content="#F2F3EE" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0A0B08" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Infinity">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<link rel="icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="fonts.css?v=20">
-<link rel="stylesheet" href="styles.css?v=20">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=21">
+<link rel="icon" href="icons/icon-192.png?v=21">
+<link rel="stylesheet" href="fonts.css?v=21">
+<link rel="stylesheet" href="styles.css?v=21">
 </head>
 <body>
 <header class="top" id="top"></header>
@@ -24,19 +24,24 @@
 <div class="sheet-backdrop" id="sheetBackdrop" hidden></div>
 <section class="sheet" id="sheet" hidden></section>
 <div class="toast" id="toast" hidden></div>
-<button class="undo" id="undo" data-a="undo" hidden>↶ Undo</button>
+<button class="undo" id="undo" data-a="undo" hidden>Undo</button>
 <nav class="tabs" id="tabs">
-  <button data-tab="today"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3 2"/></svg><span>Today</span></button>
-  <button data-tab="train"><svg viewBox="0 0 24 24"><path d="M3 10v4M6 7v10M18 7v10M21 10v4M6 12h12"/></svg><span>Train</span></button>
-  <button data-tab="food"><svg viewBox="0 0 24 24"><path d="M4 13h16a8 8 0 0 1-16 0zM8 9c0-2 2-2 2-4M13 9c0-2 2-2 2-4"/></svg><span>Food</span></button>
-  <button data-tab="progress"><svg viewBox="0 0 24 24"><path d="M3 19h18M5 15l4-4 4 3 6-7"/></svg><span>Progress</span></button>
-  <button data-tab="plan"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span>Plan</span></button>
+  <button data-tab="today"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg><span>Today</span></button>
+  <button data-tab="train"><svg viewBox="0 0 24 24"><path d="M3 10v4M6.5 7v10M17.5 7v10M21 10v4M6.5 12h11"/></svg><span>Train</span></button>
+  <button data-tab="food"><svg viewBox="0 0 24 24"><path d="M4 13h16a8 8 0 0 1-16 0zM9 9c0-2 2-2 2-4M14 9c0-2 2-2 2-4"/></svg><span>Food</span></button>
+  <button data-tab="kitchen"><svg viewBox="0 0 24 24"><path d="M7 14.5a4 4 0 1 1 1.6-7.7 4 4 0 0 1 6.8 0A4 4 0 1 1 17 14.5V19H7zM7 16.5h10"/></svg><span>Kitchen</span></button>
+  <button data-tab="progress"><svg viewBox="0 0 24 24"><path d="M4 19h16M6 15l4-4 3.5 3L19 7"/></svg><span>Progress</span></button>
 </nav>
-<script src="native.js?v=20"></script>
-<script src="calendar.js?v=20"></script>
-<script src="data.js?v=20"></script>
-<script src="food.js?v=20"></script>
-<script src="fooddb.js?v=20"></script>
-<script src="app.js?v=20"></script>
+<script src="native.js?v=21"></script>
+<script src="calendar.js?v=21"></script>
+<script src="data.js?v=21"></script>
+<script src="food.js?v=21"></script>
+<script src="fooddb.js?v=21"></script>
+<script src="core.js?v=21"></script>
+<script src="train.js?v=21"></script>
+<script src="eat.js?v=21"></script>
+<script src="kitchen.js?v=21"></script>
+<script src="screens.js?v=21"></script>
+<script src="sync.js?v=21"></script>
 </body>
 </html>
